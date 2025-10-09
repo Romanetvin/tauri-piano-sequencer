@@ -29,13 +29,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       root.classList.remove('dark');
     }
     localStorage.setItem('theme', theme);
-    console.log('Theme applied:', theme, 'HTML classes:', root.className);
   }, [theme]);
 
   const toggleTheme = () => {
     setTheme((prev) => {
       const newTheme = prev === 'light' ? 'dark' : 'light';
-      console.log('Theme toggled from', prev, 'to', newTheme);
       return newTheme;
     });
   };

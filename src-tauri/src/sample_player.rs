@@ -93,7 +93,6 @@ impl SamplePlayer {
             ));
         }
 
-        println!("Loaded {} piano samples", loaded_count);
         Ok(())
     }
 

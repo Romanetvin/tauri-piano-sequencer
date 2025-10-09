@@ -217,7 +217,6 @@ function App() {
   const handleExport = useCallback((format: ExportFormat = 'midi') => {
     try {
       exportProject(notes, tracks, keyMappings, undefined, format);
-      console.log(`Project exported successfully as ${format.toUpperCase()}`);
       setShowExportMenu(false);
     } catch (error) {
       console.error('Failed to export project:', error);
@@ -246,7 +245,6 @@ function App() {
       // Clear selections
       clearSelection();
 
-      console.log(`Project "${project.name}" loaded successfully`);
       alert(`Project "${project.name}" loaded successfully!`);
     } catch (error) {
       console.error('Failed to import project:', error);

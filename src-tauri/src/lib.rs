@@ -147,12 +147,9 @@ pub fn run() {
     // Try to load sample player first, fall back to synthesized audio
     let (audio_player, stream) = match SamplePlayer::new() {
         Ok((sample_player, stream)) => {
-            println!("Using sample-based piano playback ({} samples loaded)", sample_player.sample_count());
             (AudioPlayer::Samples(sample_player), stream)
         }
-        Err(e) => {
-            println!("Sample player failed to initialize: {}", e);
-            println!("Falling back to synthesized audio");
+        Err(_) => {
             let (audio_engine, stream) = AudioEngine::new().expect("Failed to initialize audio engine");
             (AudioPlayer::Synthesized(audio_engine), stream)
         }
