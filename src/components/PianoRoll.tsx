@@ -78,14 +78,8 @@ const PianoRoll: React.FC<PianoRollProps> = ({
     setIsDragging(true);
   };
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const handleMouseMove = useCallback((_e: React.MouseEvent) => {
     if (!isDragging || !dragStart) return;
-
-    const rect = rollRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
 
     // Visual feedback for note creation could be added here
   }, [isDragging, dragStart]);

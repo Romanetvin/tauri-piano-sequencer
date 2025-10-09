@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Note as NoteType, GridSettings } from '../types';
-import { beatsToPixels, midiToNoteName, durationToString, pixelsToBeats, snapToGrid, yToPitch } from '../utils/noteUtils';
+import { beatsToPixels, midiToNoteName, durationToString, pixelsToBeats, snapToGrid } from '../utils/noteUtils';
 
 interface NoteProps {
   note: NoteType;

@@ -1,4 +1,4 @@
-import { Note, ProjectData, Track } from '../types';
+import { Note, Track } from '../types';
 import { KeyMapping } from '../components/KeyboardGuide';
 import { isMidiFile, parseMidiFile } from './midiParser';
 import { exportToMidi } from './midiExporter';

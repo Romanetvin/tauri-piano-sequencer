@@ -84,7 +84,7 @@ export function pixelsToBeats(pixels: number, pixelsPerBeat: number): number {
  * @param minPitch Minimum visible pitch (default 21 = A0)
  * @returns Y position in pixels
  */
-export function pitchToY(pitch: number, noteHeight: number, minPitch: number = 21): number {
+export function pitchToY(pitch: number, noteHeight: number, _minPitch: number = 21): number {
   const maxPitch = 108; // C8
   // Invert Y axis (higher notes at top)
   return (maxPitch - pitch) * noteHeight;
