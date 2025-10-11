@@ -144,16 +144,9 @@ fn load_project(path: String) -> Result<ProjectData, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Try to load sample player first, fall back to synthesized audio
-    let (audio_player, stream) = match SamplePlayer::new() {
-        Ok((sample_player, stream)) => {
-            (AudioPlayer::Samples(sample_player), stream)
-        }
-        Err(_) => {
-            let (audio_engine, stream) = AudioEngine::new().expect("Failed to initialize audio engine");
-            (AudioPlayer::Synthesized(audio_engine), stream)
-        }
-    };
+    // Always use synthesized audio to support piano/synthesizer mode switching
+    let (audio_engine, stream) = AudioEngine::new().expect("Failed to initialize audio engine");
+    let audio_player = AudioPlayer::Synthesized(audio_engine);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
