@@ -95,7 +95,7 @@ export const usePlayback = (notes: Note[], options: UsePlaybackOptions = {}) => 
               const noteKey = note.id;
               if (
                 note.startTime <= newTrackTime &&
-                note.startTime > currentTrackTime &&
+                note.startTime >= currentTrackTime &&
                 !playedNotesRef.current.has(noteKey)
               ) {
                 playedNotesRef.current.add(noteKey);

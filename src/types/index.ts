@@ -47,3 +47,8 @@ export interface ViewSettings {
   minOctave: number;       // Minimum visible octave
   maxOctave: number;       // Maximum visible octave
 }
+
+export interface Scale {
+  root: string;            // Root note (C, C#, D, etc.)
+  mode: 'major' | 'minor'; // Scale mode (major/minor)
+}

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import PianoRoll from './components/PianoRoll';
 import TransportControls from './components/TransportControls';
@@ -8,11 +8,13 @@ import KeyboardGuide, { keyMappings } from './components/KeyboardGuide';
 import VisualPiano from './components/VisualPiano';
 import KeyPressNotification, { KeyPress } from './components/KeyPressNotification';
 import TrackPanel from './components/TrackPanel';
+import ScaleSelector from './components/ScaleSelector';
 import { useNotes } from './hooks/useNotes';
 import { usePlayback } from './hooks/usePlayback';
 import { useTracks } from './hooks/useTracks';
 import { Note, GridSettings } from './types';
 import { exportProject, importProject, validateProject, ExportFormat } from './utils/projectUtils';
+import { RootNote, ScaleMode, getScaleNotes } from './utils/scaleUtils';
 
 function App() {
   const [gridSettings] = useState<GridSettings>({
@@ -26,10 +28,12 @@ function App() {
     notes,
     selectedNoteIds,
     addNote,
+    removeNote,
     removeSelectedNotes,
     selectNote,
     clearSelection,
     moveNote,
+    moveSelectedNotes,
     resizeNote,
     setNotes,
   } = useNotes();
@@ -92,6 +96,13 @@ function App() {
   const [soundMode, setSoundMode] = useState<'piano' | 'synthesizer'>('piano');
   const [showExportMenu, setShowExportMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedScale, setSelectedScale] = useState<{ root: RootNote; mode: ScaleMode } | null>(null);
+
+  // Calculate highlighted notes based on selected scale
+  const highlightedNotes = useMemo(() => {
+    if (!selectedScale) return new Set<number>();
+    return getScaleNotes(selectedScale.root, selectedScale.mode);
+  }, [selectedScale]);
 
   // Keyboard playback functionality
   const playNoteFromKeyboard = useCallback(async (pitch: number) => {
@@ -273,6 +284,11 @@ function App() {
           Piano Player
         </h1>
         <div className="flex-1" />
+        <ScaleSelector
+          selectedScale={selectedScale}
+          onScaleChange={setSelectedScale}
+        />
+        <div className="h-8 w-px bg-gray-200 dark:bg-gray-800" />
         <TransportControls
           isPlaying={playbackState.isPlaying}
           onPlay={play}
@@ -405,11 +421,14 @@ function App() {
           gridSettings={gridSettings}
           onNoteSelect={selectNote}
           onNoteMove={moveNote}
+          onMoveSelectedNotes={moveSelectedNotes}
           onNoteResize={resizeNote}
           onNoteAdd={addNote}
+          onNoteDelete={removeNote}
           onSeek={seek}
           tracks={tracks}
           selectedTrackId={selectedTrackId}
+          highlightedNotes={highlightedNotes}
         />
       </div>
 

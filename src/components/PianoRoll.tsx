@@ -13,11 +13,14 @@ interface PianoRollProps {
   gridSettings: GridSettings;
   onNoteSelect: (noteId: string, addToSelection?: boolean) => void;
   onNoteMove: (noteId: string, newPitch: number, newStartTime: number) => void;
+  onMoveSelectedNotes: (pitchDelta: number, timeDelta: number) => void;
   onNoteResize: (noteId: string, newDuration: number) => void;
   onNoteAdd: (pitch: number, startTime: number, duration: number, velocity: number, trackId: string) => void;
+  onNoteDelete: (noteId: string) => void;
   onSeek: (beat: number) => void;
   tracks: Track[];
   selectedTrackId: string;
+  highlightedNotes?: Set<number>;
 }
 
 const PianoRoll: React.FC<PianoRollProps> = ({
@@ -27,15 +30,22 @@ const PianoRoll: React.FC<PianoRollProps> = ({
   gridSettings,
   onNoteSelect,
   onNoteMove,
+  onMoveSelectedNotes,
   onNoteResize,
   onNoteAdd,
+  onNoteDelete,
   onSeek,
   tracks,
   selectedTrackId,
+  highlightedNotes,
 }) => {
   const rollRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [lastNoteDuration, setLastNoteDuration] = useState<number>(1.0); // Remember last note duration for easy chord creation
+  const [isBoxSelecting, setIsBoxSelecting] = useState(false);
+  const [boxSelectStart, setBoxSelectStart] = useState<{ x: number; y: number } | null>(null);
+  const [boxSelectCurrent, setBoxSelectCurrent] = useState<{ x: number; y: number } | null>(null);
 
   const minPitch = 21; // A0
   const maxPitch = 108; // C8
@@ -74,40 +84,122 @@ const PianoRoll: React.FC<PianoRollProps> = ({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    setDragStart({ x, y });
-    setIsDragging(true);
+    // Cmd/Meta+click initiates box selection (not Ctrl, which triggers context menu)
+    if (e.metaKey) {
+      setBoxSelectStart({ x, y });
+      setBoxSelectCurrent({ x, y });
+      setIsBoxSelecting(true);
+      // Ensure dragging is disabled during box selection
+      setIsDragging(false);
+      setDragStart(null);
+    } else {
+      // Normal note creation
+      setDragStart({ x, y });
+      setIsDragging(true);
+      // Ensure box selection is disabled during note creation
+      setIsBoxSelecting(false);
+      setBoxSelectStart(null);
+      setBoxSelectCurrent(null);
+    }
   };
 
-  const handleMouseMove = useCallback((_e: React.MouseEvent) => {
-    if (!isDragging || !dragStart) return;
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (isBoxSelecting && boxSelectStart) {
+      const rect = rollRef.current?.getBoundingClientRect();
+      if (!rect) return;
 
-    // Visual feedback for note creation could be added here
-  }, [isDragging, dragStart]);
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      setBoxSelectCurrent({ x, y });
+    }
+    // Visual feedback for note creation could be added here for normal drag
+  }, [isBoxSelecting, boxSelectStart]);
+
+  // Wrapper for onNoteResize to track duration changes
+  const handleNoteResize = useCallback((noteId: string, newDuration: number) => {
+    onNoteResize(noteId, newDuration);
+    // Remember this duration for creating new notes
+    setLastNoteDuration(newDuration);
+  }, [onNoteResize]);
 
   const handleMouseUp = (e: React.MouseEvent) => {
+    // Handle box selection
+    if (isBoxSelecting && boxSelectStart && boxSelectCurrent) {
+      const minX = Math.min(boxSelectStart.x, boxSelectCurrent.x);
+      const maxX = Math.max(boxSelectStart.x, boxSelectCurrent.x);
+      const minY = Math.min(boxSelectStart.y, boxSelectCurrent.y);
+      const maxY = Math.max(boxSelectStart.y, boxSelectCurrent.y);
+
+      // Convert to beats and pitches
+      const minTime = pixelsToBeats(minX, gridSettings.pixelsPerBeat);
+      const maxTime = pixelsToBeats(maxX, gridSettings.pixelsPerBeat);
+      const minPitchInBox = yToPitch(maxY, gridSettings.noteHeight, 0);
+      const maxPitchInBox = yToPitch(minY, gridSettings.noteHeight, 0);
+
+      // Find notes within the box and select them
+      notes.forEach((note) => {
+        const noteX = note.startTime;
+        const noteEndX = note.startTime + note.duration;
+        const notePitch = note.pitch;
+
+        // Check if note overlaps with selection box
+        if (
+          noteEndX >= minTime &&
+          noteX <= maxTime &&
+          notePitch >= minPitchInBox &&
+          notePitch <= maxPitchInBox
+        ) {
+          onNoteSelect(note.id, true); // Add to selection
+        }
+      });
+
+      setIsBoxSelecting(false);
+      setBoxSelectStart(null);
+      setBoxSelectCurrent(null);
+      return;
+    }
+
+    // Handle note creation
     if (!isDragging || !dragStart) return;
 
     const rect = rollRef.current?.getBoundingClientRect();
     if (!rect) return;
 
-    const endX = e.clientX - rect.left;
-    const startX = Math.min(dragStart.x, endX);
-    const width = Math.abs(endX - dragStart.x);
-
     const pitch = yToPitch(dragStart.y, gridSettings.noteHeight, 0);
-    let startTime = pixelsToBeats(startX, gridSettings.pixelsPerBeat);
-    let duration = pixelsToBeats(width, gridSettings.pixelsPerBeat);
 
-    // Apply grid snapping
+    // ALWAYS snap start position to grid cell (for precision)
+    let startTime = pixelsToBeats(dragStart.x, gridSettings.pixelsPerBeat);
     if (gridSettings.snapToGrid) {
       startTime = snapToGrid(startTime, gridSettings.gridDivision);
-      duration = snapToGrid(duration, gridSettings.gridDivision);
     }
 
-    // Minimum duration
-    duration = Math.max(duration, 0.25);
+    // Calculate drag width to determine if user clicked or dragged
+    const endX = e.clientX - rect.left;
+    const width = Math.abs(endX - dragStart.x);
+    const minDragThreshold = 5; // pixels - if drag is smaller than this, treat as click
 
-    // Add note if duration is valid
+    let duration: number;
+
+    if (width < minDragThreshold) {
+      // User clicked (didn't drag) - use last note duration
+      duration = lastNoteDuration;
+    } else {
+      // User dragged - calculate duration from drag width
+      duration = pixelsToBeats(width, gridSettings.pixelsPerBeat);
+
+      // Apply grid snapping to duration
+      if (gridSettings.snapToGrid) {
+        duration = snapToGrid(duration, gridSettings.gridDivision);
+      }
+
+      // Minimum duration
+      duration = Math.max(duration, 0.25);
+
+      // Remember this duration for next note
+      setLastNoteDuration(duration);
+    }
+
+    // Add note if valid
     if (duration > 0 && pitch >= minPitch && pitch <= maxPitch) {
       onNoteAdd(pitch, startTime, duration, 100, selectedTrackId);
     }
@@ -142,6 +234,7 @@ const PianoRoll: React.FC<PianoRollProps> = ({
               minPitch={minPitch}
               maxPitch={maxPitch}
               noteHeight={gridSettings.noteHeight}
+              highlightedNotes={highlightedNotes}
             />
           </div>
 
@@ -162,6 +255,11 @@ const PianoRoll: React.FC<PianoRollProps> = ({
                   setIsDragging(false);
                   setDragStart(null);
                 }
+                if (isBoxSelecting) {
+                  setIsBoxSelecting(false);
+                  setBoxSelectStart(null);
+                  setBoxSelectCurrent(null);
+                }
               }}
             >
             {/* Grid lines */}
@@ -169,15 +267,33 @@ const PianoRoll: React.FC<PianoRollProps> = ({
               const pitch = maxPitch - i;
               const y = i * gridSettings.noteHeight;
               const isBlack = isBlackKey(pitch);
+              const isInScale = highlightedNotes?.has(pitch);
+              const hasScaleSelected = highlightedNotes && highlightedNotes.size > 0;
+
+              // When scale is selected: use 2 tints (in-scale = lighter, out-of-scale = darker)
+              // When no scale: use standard colors (white keys lighter, black keys darker)
+              let bgClass = '';
+              if (hasScaleSelected) {
+                if (isInScale) {
+                  // In scale: very light (highlighted)
+                  bgClass = 'bg-gray-50 dark:bg-gray-800';
+                } else {
+                  // Out of scale: moderate gray/darker (dimmed)
+                  bgClass = 'bg-gray-200 dark:bg-gray-950';
+                }
+              } else {
+                // No scale selected: standard appearance
+                if (isBlack) {
+                  bgClass = 'bg-gray-100 dark:bg-gray-800';
+                } else {
+                  bgClass = 'bg-white dark:bg-gray-950';
+                }
+              }
 
               return (
                 <div
                   key={pitch}
-                  className={`absolute left-0 right-0 border-b ${
-                    isBlack
-                      ? 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
-                      : 'bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-700'
-                  }`}
+                  className={`absolute left-0 right-0 border-b border-gray-200 dark:border-gray-700 ${bgClass}`}
                   style={{
                     top: `${y}px`,
                     height: `${gridSettings.noteHeight}px`,
@@ -217,9 +333,12 @@ const PianoRoll: React.FC<PianoRollProps> = ({
                   pixelsPerBeat={gridSettings.pixelsPerBeat}
                   yPosition={y}
                   isSelected={selectedNoteIds.has(note.id)}
+                  selectedNoteIds={selectedNoteIds}
                   onSelect={onNoteSelect}
                   onMove={onNoteMove}
-                  onResize={onNoteResize}
+                  onMoveSelectedNotes={onMoveSelectedNotes}
+                  onResize={handleNoteResize}
+                  onDelete={onNoteDelete}
                   gridSettings={gridSettings}
                   trackColor={track?.color || '#6366f1'}
                 />
@@ -242,6 +361,19 @@ const PianoRoll: React.FC<PianoRollProps> = ({
                   top: `${Math.floor(dragStart.y / gridSettings.noteHeight) * gridSettings.noteHeight}px`,
                   width: '20px',
                   height: `${gridSettings.noteHeight - 2}px`,
+                }}
+              />
+            )}
+
+            {/* Box selection visual */}
+            {isBoxSelecting && boxSelectStart && boxSelectCurrent && (
+              <div
+                className="absolute border-2 border-indigo-500 bg-indigo-500/10 pointer-events-none rounded-sm"
+                style={{
+                  left: `${Math.min(boxSelectStart.x, boxSelectCurrent.x)}px`,
+                  top: `${Math.min(boxSelectStart.y, boxSelectCurrent.y)}px`,
+                  width: `${Math.abs(boxSelectCurrent.x - boxSelectStart.x)}px`,
+                  height: `${Math.abs(boxSelectCurrent.y - boxSelectStart.y)}px`,
                 }}
               />
             )}

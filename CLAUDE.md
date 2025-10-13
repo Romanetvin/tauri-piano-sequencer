@@ -175,3 +175,4 @@ The app is configured for macOS (Apple Silicon and Intel):
 - Tailwind CSS v4 for styling
 - TypeScript for type safety
 - Rust dependencies: rodio 0.19, cpal 0.15, serde, chrono
+- don’t run the app yourself i already have it running myself

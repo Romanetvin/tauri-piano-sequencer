@@ -15,15 +15,15 @@ struct StreamWrapper(rodio::OutputStream);
 unsafe impl Send for StreamWrapper {}
 unsafe impl Sync for StreamWrapper {}
 
-// Audio playback mode
+// Audio playback mode - wrapped in Arc for shared access
 enum AudioPlayer {
-    Samples(SamplePlayer),
-    Synthesized(AudioEngine),
+    Samples(Arc<SamplePlayer>),
+    Synthesized(Arc<Mutex<AudioEngine>>),
 }
 
 // Audio engine state
 struct AppState {
-    audio_player: Mutex<AudioPlayer>,
+    audio_player: AudioPlayer,
     _stream: Arc<StreamWrapper>,
 }
 
@@ -47,46 +47,61 @@ struct ProjectData {
 /// Play a single note
 #[tauri::command]
 fn play_note(pitch: u8, duration: f32, velocity: u8, state: State<AppState>) -> Result<(), String> {
-    let player = state.audio_player.lock().unwrap();
-    match &*player {
-        AudioPlayer::Samples(sample_player) => sample_player.play_note(pitch, duration, velocity),
-        AudioPlayer::Synthesized(audio_engine) => audio_engine.play_note(pitch, duration, velocity),
+    // Use Arc to allow concurrent playback - no mutex needed for read-only operations
+    match &state.audio_player {
+        AudioPlayer::Samples(sample_player) => {
+            // SamplePlayer is read-only during playback, Arc allows concurrent access
+            sample_player.play_note(pitch, duration, velocity)
+        },
+        AudioPlayer::Synthesized(audio_engine) => {
+            // AudioEngine needs mutex only for reading volume/mode, not for sample generation
+            let engine = audio_engine.lock().unwrap();
+            engine.play_note(pitch, duration, velocity)
+        }
     }
 }
 
 /// Stop all currently playing notes
 #[tauri::command]
 fn stop_all_notes(state: State<AppState>) -> Result<(), String> {
-    let player = state.audio_player.lock().unwrap();
-    match &*player {
+    match &state.audio_player {
         AudioPlayer::Samples(_) => Ok(()), // Sample player doesn't support stop yet
-        AudioPlayer::Synthesized(audio_engine) => audio_engine.stop_all_notes(),
+        AudioPlayer::Synthesized(audio_engine) => {
+            let engine = audio_engine.lock().unwrap();
+            engine.stop_all_notes()
+        }
     }
 }
 
 /// Set the master volume (0.0 to 1.0)
 #[tauri::command]
 fn set_volume(volume: f32, state: State<AppState>) -> Result<(), String> {
-    let mut player = state.audio_player.lock().unwrap();
-    match &mut *player {
-        AudioPlayer::Samples(sample_player) => sample_player.set_volume(volume),
-        AudioPlayer::Synthesized(audio_engine) => audio_engine.set_volume(volume),
+    match &state.audio_player {
+        AudioPlayer::Samples(_) => {
+            // Sample player volume is immutable after creation
+            // Would need to redesign to support dynamic volume
+            Err("Volume control not supported for sample playback".to_string())
+        },
+        AudioPlayer::Synthesized(audio_engine) => {
+            let mut engine = audio_engine.lock().unwrap();
+            engine.set_volume(volume)
+        }
     }
 }
 
 /// Set the sound mode (piano or synthesizer)
 #[tauri::command]
 fn set_sound_mode(mode: String, state: State<AppState>) -> Result<(), String> {
-    let mut player = state.audio_player.lock().unwrap();
-    match &mut *player {
+    match &state.audio_player {
         AudioPlayer::Samples(_) => Err("Cannot change sound mode when using samples".to_string()),
         AudioPlayer::Synthesized(audio_engine) => {
+            let mut engine = audio_engine.lock().unwrap();
             let sound_mode = match mode.as_str() {
                 "piano" => SoundMode::Piano,
                 "synthesizer" => SoundMode::Synthesizer,
                 _ => return Err(format!("Invalid sound mode: {}", mode)),
             };
-            audio_engine.set_sound_mode(sound_mode)
+            engine.set_sound_mode(sound_mode)
         }
     }
 }
@@ -94,11 +109,11 @@ fn set_sound_mode(mode: String, state: State<AppState>) -> Result<(), String> {
 /// Get the current sound mode
 #[tauri::command]
 fn get_sound_mode(state: State<AppState>) -> Result<String, String> {
-    let player = state.audio_player.lock().unwrap();
-    match &*player {
+    match &state.audio_player {
         AudioPlayer::Samples(_) => Ok("samples".to_string()),
         AudioPlayer::Synthesized(audio_engine) => {
-            let mode = match audio_engine.get_sound_mode() {
+            let engine = audio_engine.lock().unwrap();
+            let mode = match engine.get_sound_mode() {
                 SoundMode::Piano => "piano",
                 SoundMode::Synthesizer => "synthesizer",
             };
@@ -144,14 +159,25 @@ fn load_project(path: String) -> Result<ProjectData, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Always use synthesized audio to support piano/synthesizer mode switching
-    let (audio_engine, stream) = AudioEngine::new().expect("Failed to initialize audio engine");
-    let audio_player = AudioPlayer::Synthesized(audio_engine);
+    // Try to load piano samples first, fall back to synthesized audio if unavailable
+    let (audio_player, stream) = match SamplePlayer::new() {
+        Ok((sample_player, stream)) => {
+            println!("✓ Using piano samples ({} loaded)", sample_player.sample_count());
+            (AudioPlayer::Samples(Arc::new(sample_player)), stream)
+        }
+        Err(e) => {
+            eprintln!("⚠ Failed to load piano samples: {}", e);
+            eprintln!("→ Using synthesized audio instead");
+            let (audio_engine, stream) = AudioEngine::new()
+                .expect("Failed to initialize audio engine");
+            (AudioPlayer::Synthesized(Arc::new(Mutex::new(audio_engine))), stream)
+        }
+    };
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
-            audio_player: Mutex::new(audio_player),
+            audio_player,
             _stream: Arc::new(StreamWrapper(stream)),
         })
         .invoke_handler(tauri::generate_handler![

@@ -43,6 +43,17 @@ export const useNotes = () => {
     updateNote(noteId, { pitch: newPitch, startTime: Math.max(0, newStartTime) });
   }, [updateNote]);
 
+  const moveSelectedNotes = useCallback((pitchDelta: number, timeDelta: number) => {
+    setNotes(prev => prev.map(note => {
+      if (selectedNoteIds.has(note.id)) {
+        const newPitch = Math.max(21, Math.min(108, note.pitch + pitchDelta));
+        const newStartTime = Math.max(0, note.startTime + timeDelta);
+        return { ...note, pitch: newPitch, startTime: newStartTime };
+      }
+      return note;
+    }));
+  }, [selectedNoteIds]);
+
   const resizeNote = useCallback((noteId: string, newDuration: number) => {
     updateNote(noteId, { duration: Math.max(0.25, newDuration) });
   }, [updateNote]);
@@ -93,6 +104,7 @@ export const useNotes = () => {
     removeSelectedNotes,
     updateNote,
     moveNote,
+    moveSelectedNotes,
     resizeNote,
     selectNote,
     clearSelection,

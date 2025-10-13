@@ -47,14 +47,14 @@ export function isBlackKey(pitch: number): boolean {
 }
 
 /**
- * Snap a time value to the nearest grid division
+ * Snap a time value to the start of the grid cell (floor)
  * @param time Time in beats
  * @param gridDivision Grid division (4 = quarter note, 8 = eighth note, etc.)
- * @returns Snapped time value
+ * @returns Snapped time value (start of grid cell)
  */
 export function snapToGrid(time: number, gridDivision: number): number {
   const snapValue = 1 / gridDivision;
-  return Math.round(time / snapValue) * snapValue;
+  return Math.floor(time / snapValue) * snapValue;
 }
 
 /**
