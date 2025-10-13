@@ -5,6 +5,7 @@ import { generateNoteId } from '../utils/noteUtils';
 export const useNotes = () => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+  const [copiedNotes, setCopiedNotes] = useState<Note[]>([]);
 
   const addNote = useCallback((pitch: number, startTime: number, duration: number, velocity: number = 100, trackId: string = 'track_right_hand') => {
     const newNote: Note = {
@@ -96,9 +97,63 @@ export const useNotes = () => {
     );
   }, [notes]);
 
+  const copySelectedNotes = useCallback(() => {
+    const selectedNotes = notes.filter(note => selectedNoteIds.has(note.id));
+    setCopiedNotes(selectedNotes);
+    return selectedNotes.length;
+  }, [notes, selectedNoteIds]);
+
+  const pasteNotes = useCallback((pasteAtTime?: number) => {
+    if (copiedNotes.length === 0) return [];
+
+    // Find the earliest start time among copied notes
+    const minStartTime = Math.min(...copiedNotes.map(n => n.startTime));
+
+    // Calculate paste position
+    let pasteTime: number;
+    if (pasteAtTime !== undefined) {
+      // Use provided paste time
+      pasteTime = pasteAtTime;
+    } else {
+      // Default: paste one beat after the last selected note
+      const selectedNotes = notes.filter(note => selectedNoteIds.has(note.id));
+      if (selectedNotes.length > 0) {
+        const maxEndTime = Math.max(...selectedNotes.map(n => n.startTime + n.duration));
+        pasteTime = maxEndTime + 1;
+      } else {
+        // If no selection, paste at beat 0
+        pasteTime = 0;
+      }
+    }
+
+    // Calculate the time offset for pasting
+    const timeOffset = pasteTime - minStartTime;
+
+    // Create new notes with new IDs and adjusted start times
+    const newNotes: Note[] = copiedNotes.map(note => ({
+      ...note,
+      id: generateNoteId(),
+      startTime: note.startTime + timeOffset,
+    }));
+
+    // Add the new notes
+    setNotes(prev => [...prev, ...newNotes]);
+
+    // Select the newly pasted notes
+    setSelectedNoteIds(new Set(newNotes.map(n => n.id)));
+
+    return newNotes.map(n => n.id);
+  }, [copiedNotes, notes, selectedNoteIds]);
+
+  const duplicateSelectedNotes = useCallback(() => {
+    copySelectedNotes();
+    return pasteNotes();
+  }, [copySelectedNotes, pasteNotes]);
+
   return {
     notes,
     selectedNoteIds,
+    copiedNotes,
     addNote,
     removeNote,
     removeSelectedNotes,
@@ -113,5 +168,8 @@ export const useNotes = () => {
     getNoteById,
     getNotesInRange,
     setNotes,
+    copySelectedNotes,
+    pasteNotes,
+    duplicateSelectedNotes,
   };
 };

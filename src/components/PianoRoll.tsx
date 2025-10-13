@@ -217,7 +217,7 @@ const PianoRoll: React.FC<PianoRollProps> = ({
           {/* Empty space for piano keys alignment */}
           <div style={{ minWidth: '80px', flexShrink: 0 }} className="bg-gray-50 dark:bg-gray-950"></div>
           {/* Time Ruler Container - scrolls horizontally */}
-          <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin" id="time-ruler-scroll">
+          <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin" id="time-ruler-scroll" style={{ minWidth: 0 }}>
             <TimeRuler
               totalBeats={totalBeats}
               pixelsPerBeat={gridSettings.pixelsPerBeat}
@@ -239,7 +239,7 @@ const PianoRoll: React.FC<PianoRollProps> = ({
           </div>
 
           {/* Piano Roll Grid Container - scrolls horizontally */}
-          <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin" id="piano-roll-scroll" style={{ height: `${rollHeight}px` }}>
+          <div className="overflow-x-auto overflow-y-hidden scrollbar-thin" id="piano-roll-scroll" style={{ height: `${rollHeight}px`, width: '100%' }}>
             <div
               ref={rollRef}
               className="relative"
