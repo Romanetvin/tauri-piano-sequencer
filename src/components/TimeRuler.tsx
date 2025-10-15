@@ -6,6 +6,7 @@ interface TimeRulerProps {
   pixelsPerBeat: number;
   beatsPerMeasure?: number;
   onSeek?: (beat: number) => void;
+  startBeat?: number; // Starting beat offset for pagination
 }
 
 const TimeRuler: React.FC<TimeRulerProps> = ({
@@ -13,8 +14,8 @@ const TimeRuler: React.FC<TimeRulerProps> = ({
   pixelsPerBeat,
   beatsPerMeasure = 4,
   onSeek,
+  startBeat = 0,
 }) => {
-  const measures = Math.ceil(totalBeats / beatsPerMeasure);
   const rulerWidth = beatsToPixels(totalBeats, pixelsPerBeat);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -30,15 +31,18 @@ const TimeRuler: React.FC<TimeRulerProps> = ({
       style={{ width: `${rulerWidth}px`, height: '36px' }}
       onClick={handleClick}
     >
-      {/* Measure markers */}
-      {Array.from({ length: measures + 1 }, (_, i) => {
-        const beat = i * beatsPerMeasure;
-        const x = beatsToPixels(beat, pixelsPerBeat);
-        const timeString = beatsToTimeString(beat, beatsPerMeasure);
+      {/* Measure markers - show only first 4 measures */}
+      {Array.from({ length: 4 }, (_, i) => {
+        const relativeBeat = i * beatsPerMeasure;
+        if (relativeBeat >= totalBeats) return null;
+
+        const absoluteBeat = startBeat + relativeBeat;
+        const x = beatsToPixels(relativeBeat, pixelsPerBeat);
+        const timeString = beatsToTimeString(absoluteBeat, beatsPerMeasure);
 
         return (
           <div
-            key={i}
+            key={`measure-${i}`}
             className="absolute top-0 h-full"
             style={{ left: `${x}px` }}
           >
@@ -52,12 +56,14 @@ const TimeRuler: React.FC<TimeRulerProps> = ({
         );
       })}
 
-      {/* Beat markers (subdivision lines) */}
+      {/* Beat markers (subdivision lines) with beat numbers */}
       {Array.from({ length: Math.ceil(totalBeats) }, (_, i) => {
-        // Skip measure lines (already drawn above)
+        // Skip measure boundaries (already drawn above)
         if (i % beatsPerMeasure === 0) return null;
 
         const x = beatsToPixels(i, pixelsPerBeat);
+        const absoluteBeat = startBeat + i;
+        const beatInMeasure = (absoluteBeat % beatsPerMeasure) + 1;
 
         return (
           <div
@@ -66,6 +72,10 @@ const TimeRuler: React.FC<TimeRulerProps> = ({
             style={{ left: `${x}px` }}
           >
             <div className="absolute top-0 bottom-0 w-px bg-gray-200 dark:bg-gray-700 opacity-50"></div>
+            {/* Beat number within measure */}
+            <div className="absolute top-1.5 left-1 text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+              {beatInMeasure}
+            </div>
           </div>
         );
       })}

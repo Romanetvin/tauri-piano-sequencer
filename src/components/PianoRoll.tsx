@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import { Note as NoteType, GridSettings, Track } from '../types';
 import Note from './Note';
 import PianoKeys from './PianoKeys';
@@ -46,34 +46,27 @@ const PianoRoll: React.FC<PianoRollProps> = ({
   const [isBoxSelecting, setIsBoxSelecting] = useState(false);
   const [boxSelectStart, setBoxSelectStart] = useState<{ x: number; y: number } | null>(null);
   const [boxSelectCurrent, setBoxSelectCurrent] = useState<{ x: number; y: number } | null>(null);
+  const [currentPage, setCurrentPage] = useState(0); // Track which 4-beat page we're viewing
 
   const minPitch = 21; // A0
   const maxPitch = 108; // C8
   const totalBeats = 256; // 64 measures at 4/4
+  const beatsPerPage = 16; // Show 4 measures (4 measures × 4 beats = 16 beats)
+  const totalPages = Math.ceil(totalBeats / beatsPerPage);
   const rollHeight = (maxPitch - minPitch + 1) * gridSettings.noteHeight;
 
-  // Sync horizontal scroll between time ruler and piano roll
-  useEffect(() => {
-    const timeRulerScroll = document.getElementById('time-ruler-scroll');
-    const pianoRollScroll = document.getElementById('piano-roll-scroll');
+  // Calculate the visible beat range for the current page
+  const visibleStartBeat = currentPage * beatsPerPage;
+  const visibleEndBeat = Math.min(visibleStartBeat + beatsPerPage, totalBeats);
 
-    if (!timeRulerScroll || !pianoRollScroll) return;
+  // Navigation functions - cycle through 4-measure pages
+  const goToPreviousPage = useCallback(() => {
+    setCurrentPage(prev => (prev - 1 + totalPages) % totalPages);
+  }, [totalPages]);
 
-    const syncScroll = (source: HTMLElement, target: HTMLElement) => {
-      target.scrollLeft = source.scrollLeft;
-    };
-
-    const handleTimeRulerScroll = () => syncScroll(timeRulerScroll, pianoRollScroll);
-    const handlePianoRollScroll = () => syncScroll(pianoRollScroll, timeRulerScroll);
-
-    timeRulerScroll.addEventListener('scroll', handleTimeRulerScroll);
-    pianoRollScroll.addEventListener('scroll', handlePianoRollScroll);
-
-    return () => {
-      timeRulerScroll.removeEventListener('scroll', handleTimeRulerScroll);
-      pianoRollScroll.removeEventListener('scroll', handlePianoRollScroll);
-    };
-  }, []);
+  const goToNextPage = useCallback(() => {
+    setCurrentPage(prev => (prev + 1) % totalPages);
+  }, [totalPages]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return; // Only left click
@@ -81,7 +74,8 @@ const PianoRoll: React.FC<PianoRollProps> = ({
     const rect = rollRef.current?.getBoundingClientRect();
     if (!rect) return;
 
-    const x = e.clientX - rect.left;
+    // Adjust x position to account for the current page offset
+    const x = e.clientX - rect.left + (visibleStartBeat * gridSettings.pixelsPerBeat);
     const y = e.clientY - rect.top;
 
     // Cmd/Meta+click initiates box selection (not Ctrl, which triggers context menu)
@@ -108,12 +102,13 @@ const PianoRoll: React.FC<PianoRollProps> = ({
       const rect = rollRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      const x = e.clientX - rect.left;
+      // Adjust x position to account for the current page offset
+      const x = e.clientX - rect.left + (visibleStartBeat * gridSettings.pixelsPerBeat);
       const y = e.clientY - rect.top;
       setBoxSelectCurrent({ x, y });
     }
     // Visual feedback for note creation could be added here for normal drag
-  }, [isBoxSelecting, boxSelectStart]);
+  }, [isBoxSelecting, boxSelectStart, visibleStartBeat, gridSettings.pixelsPerBeat]);
 
   // Wrapper for onNoteResize to track duration changes
   const handleNoteResize = useCallback((noteId: string, newDuration: number) => {
@@ -212,24 +207,46 @@ const PianoRoll: React.FC<PianoRollProps> = ({
     <div className="flex h-full bg-gray-50 dark:bg-gray-950">
       {/* Main Piano Roll Area */}
       <div className="flex-1 flex flex-col bg-gray-100 dark:bg-gray-900">
-        {/* Time Ruler - scrolls horizontally with grid */}
-        <div className="flex bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 overflow-hidden">
+        {/* Time Ruler - shows only current 4-beat page */}
+        <div className="flex bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
           {/* Empty space for piano keys alignment */}
-          <div style={{ minWidth: '80px', flexShrink: 0 }} className="bg-gray-50 dark:bg-gray-950"></div>
-          {/* Time Ruler Container - scrolls horizontally */}
-          <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin" id="time-ruler-scroll" style={{ minWidth: 0 }}>
+          <div style={{ width: '80px', flexShrink: 0 }} className="bg-gray-50 dark:bg-gray-950"></div>
+          {/* Time Ruler Container - expands to fill space */}
+          <div className="flex-1 min-w-0">
             <TimeRuler
-              totalBeats={totalBeats}
+              totalBeats={beatsPerPage}
               pixelsPerBeat={gridSettings.pixelsPerBeat}
-              onSeek={onSeek}
+              startBeat={visibleStartBeat}
+              onSeek={(beat) => onSeek(beat + visibleStartBeat)}
             />
+          </div>
+          {/* Page Navigation */}
+          <div className="flex items-center gap-1 px-2 bg-gray-50 dark:bg-gray-950 flex-shrink-0">
+            <button
+              onClick={goToPreviousPage}
+              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors"
+              title="Previous 4 measures"
+            >
+              <svg className="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={goToNextPage}
+              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors"
+              title="Next 4 measures"
+            >
+              <svg className="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
         </div>
 
-        {/* Piano Roll Grid with Keys - scrolls vertically and horizontally */}
+        {/* Piano Roll Grid with Keys - scrolls vertically only */}
         <div className="relative flex-1 flex overflow-y-auto overflow-x-hidden">
-          {/* Piano Keys Sidebar - Fixed on left, sticky during horizontal scroll */}
-          <div style={{ minWidth: '80px', flexShrink: 0, height: `${rollHeight}px` }} className="bg-gray-50 dark:bg-gray-950 z-10 sticky left-0">
+          {/* Piano Keys Sidebar - Fixed on left */}
+          <div style={{ width: '80px', flexShrink: 0, height: `${rollHeight}px` }} className="bg-gray-50 dark:bg-gray-950 z-10">
             <PianoKeys
               minPitch={minPitch}
               maxPitch={maxPitch}
@@ -238,13 +255,18 @@ const PianoRoll: React.FC<PianoRollProps> = ({
             />
           </div>
 
-          {/* Piano Roll Grid Container - scrolls horizontally */}
-          <div className="overflow-x-auto overflow-y-hidden scrollbar-thin" id="piano-roll-scroll" style={{ height: `${rollHeight}px`, width: '100%' }}>
+          {/* Piano Roll Grid Container - expands to fill space */}
+          <div
+            className="flex-1 min-w-0"
+            style={{
+              height: `${rollHeight}px`,
+            }}
+          >
             <div
               ref={rollRef}
               className="relative"
               style={{
-                width: `${totalBeats * gridSettings.pixelsPerBeat}px`,
+                width: `${beatsPerPage * gridSettings.pixelsPerBeat}px`,
                 height: `${rollHeight}px`,
               }}
               onMouseDown={handleMouseDown}
@@ -302,11 +324,13 @@ const PianoRoll: React.FC<PianoRollProps> = ({
               );
             })}
 
-            {/* Vertical grid lines for beats */}
-            {Array.from({ length: totalBeats * gridSettings.gridDivision }, (_, i) => {
+            {/* Vertical grid lines for beats - only visible beats */}
+            {Array.from({ length: beatsPerPage * gridSettings.gridDivision }, (_, i) => {
               const beat = i / gridSettings.gridDivision;
+              const absoluteBeat = visibleStartBeat + beat;
               const x = beat * gridSettings.pixelsPerBeat;
-              const isMeasure = i % (gridSettings.gridDivision * 4) === 0;
+              const absoluteGridIndex = Math.floor(absoluteBeat * gridSettings.gridDivision);
+              const isMeasure = absoluteGridIndex % (gridSettings.gridDivision * 4) === 0;
 
               return (
                 <div
@@ -321,43 +345,58 @@ const PianoRoll: React.FC<PianoRollProps> = ({
               );
             })}
 
-            {/* Notes */}
-            {notes.map((note) => {
-              const y = pitchToY(note.pitch, gridSettings.noteHeight, 0);
-              const track = tracks.find(t => t.id === note.trackId);
-              return (
-                <Note
-                  key={note.id}
-                  note={note}
-                  noteHeight={gridSettings.noteHeight}
-                  pixelsPerBeat={gridSettings.pixelsPerBeat}
-                  yPosition={y}
-                  isSelected={selectedNoteIds.has(note.id)}
-                  selectedNoteIds={selectedNoteIds}
-                  onSelect={onNoteSelect}
-                  onMove={onNoteMove}
-                  onMoveSelectedNotes={onMoveSelectedNotes}
-                  onResize={handleNoteResize}
-                  onDelete={onNoteDelete}
-                  gridSettings={gridSettings}
-                  trackColor={track?.color || '#6366f1'}
-                />
-              );
-            })}
+            {/* Notes - only render notes in visible range */}
+            {notes
+              .filter((note) => {
+                // Check if note is visible in current page
+                const noteEnd = note.startTime + note.duration;
+                return noteEnd > visibleStartBeat && note.startTime < visibleEndBeat;
+              })
+              .map((note) => {
+                const y = pitchToY(note.pitch, gridSettings.noteHeight, 0);
+                const track = tracks.find(t => t.id === note.trackId);
+                // Adjust x position relative to visible start
+                const adjustedNote = {
+                  ...note,
+                  startTime: note.startTime - visibleStartBeat,
+                };
+                return (
+                  <Note
+                    key={note.id}
+                    note={adjustedNote}
+                    noteHeight={gridSettings.noteHeight}
+                    pixelsPerBeat={gridSettings.pixelsPerBeat}
+                    yPosition={y}
+                    isSelected={selectedNoteIds.has(note.id)}
+                    selectedNoteIds={selectedNoteIds}
+                    onSelect={onNoteSelect}
+                    onMove={(noteId, newPitch, newStartTime) =>
+                      onNoteMove(noteId, newPitch, newStartTime + visibleStartBeat)
+                    }
+                    onMoveSelectedNotes={onMoveSelectedNotes}
+                    onResize={handleNoteResize}
+                    onDelete={onNoteDelete}
+                    gridSettings={gridSettings}
+                    trackColor={track?.color || '#6366f1'}
+                  />
+                );
+              })}
 
-            {/* Playhead */}
-            <Playhead
-              currentBeat={currentBeat}
-              pixelsPerBeat={gridSettings.pixelsPerBeat}
-              height={rollHeight}
-            />
+            {/* Playhead - only show if in visible range */}
+            {currentBeat >= visibleStartBeat && currentBeat < visibleEndBeat && (
+              <Playhead
+                currentBeat={currentBeat - visibleStartBeat}
+                pixelsPerBeat={gridSettings.pixelsPerBeat}
+                height={rollHeight}
+              />
+            )}
 
             {/* Drag preview for note creation */}
             {isDragging && dragStart && (
               <div
                 className="absolute bg-gradient-to-r from-indigo-500 to-purple-500 opacity-60 rounded-sm pointer-events-none shadow-lg"
                 style={{
-                  left: `${dragStart.x}px`,
+                  left: `${dragStart.x - (visibleStartBeat * gridSettings.pixelsPerBeat)}px`,
                   top: `${Math.floor(dragStart.y / gridSettings.noteHeight) * gridSettings.noteHeight}px`,
                   width: '20px',
                   height: `${gridSettings.noteHeight - 2}px`,
@@ -370,7 +409,7 @@ const PianoRoll: React.FC<PianoRollProps> = ({
               <div
                 className="absolute border-2 border-indigo-500 bg-indigo-500/10 pointer-events-none rounded-sm"
                 style={{
-                  left: `${Math.min(boxSelectStart.x, boxSelectCurrent.x)}px`,
+                  left: `${Math.min(boxSelectStart.x, boxSelectCurrent.x) - (visibleStartBeat * gridSettings.pixelsPerBeat)}px`,
                   top: `${Math.min(boxSelectStart.y, boxSelectCurrent.y)}px`,
                   width: `${Math.abs(boxSelectCurrent.x - boxSelectStart.x)}px`,
                   height: `${Math.abs(boxSelectCurrent.y - boxSelectStart.y)}px`,

@@ -1,14 +1,17 @@
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
+use lru::LruCache;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-/// Sample-based piano player using real piano recordings
+/// Sample-based piano player using real piano recordings with lazy loading
 pub struct SamplePlayer {
     stream_handle: Arc<OutputStreamHandle>,
-    samples: HashMap<(u8, u8), Vec<f32>>, // (MIDI pitch, velocity 1-16) -> sample data
+    sample_paths: HashMap<(u8, u8), PathBuf>, // (MIDI pitch, velocity 1-16) -> file path
+    sample_cache: Arc<Mutex<LruCache<(u8, u8), Vec<f32>>>>, // LRU cache for loaded samples
     sample_rate: u32,
     volume: f32,
 }
@@ -22,13 +25,14 @@ impl SamplePlayer {
 
         let mut player = Self {
             stream_handle: Arc::new(stream_handle),
-            samples: HashMap::new(),
+            sample_paths: HashMap::new(),
+            sample_cache: Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(100).unwrap()))), // Cache up to 100 samples
             sample_rate: 48000,
             volume: 0.8,
         };
 
-        // Load samples from the samples directory
-        player.load_samples()?;
+        // Index sample files from the samples directory (no loading yet)
+        player.index_samples()?;
 
         Ok((player, stream))
     }
@@ -48,8 +52,8 @@ impl SamplePlayer {
         ((velocity as u16 * 16) / 128).max(1).min(16) as u8
     }
 
-    /// Load piano samples from the samples directory
-    fn load_samples(&mut self) -> Result<(), String> {
+    /// Index piano sample files from the samples directory (lazy loading - don't decode yet)
+    fn index_samples(&mut self) -> Result<(), String> {
         // Get the samples directory path
         let samples_dir = self.get_samples_dir()?;
 
@@ -60,13 +64,13 @@ impl SamplePlayer {
             ));
         }
 
-        let mut loaded_count = 0;
+        let mut indexed_count = 0;
 
-        // Try to load all notes from A0 (21) to C8 (108)
+        // Index all notes from A0 (21) to C8 (108)
         for midi_pitch in 21..=108 {
             let note_name = Self::midi_to_note_name(midi_pitch);
 
-            // Try to load multiple velocity layers (prioritize middle velocities)
+            // Index multiple velocity layers (prioritize middle velocities)
             let velocity_priorities = vec![8, 12, 4, 16, 6, 10, 14, 2, 1, 3, 5, 7, 9, 11, 13, 15];
 
             for sample_velocity in velocity_priorities {
@@ -79,28 +83,23 @@ impl SamplePlayer {
                 for filename in &possible_names {
                     let file_path = samples_dir.join(filename);
                     if file_path.exists() {
-                        match self.load_sample_file(&file_path, midi_pitch, sample_velocity) {
-                            Ok(_) => {
-                                loaded_count += 1;
-                            }
-                            Err(e) => {
-                                eprintln!("Warning: Failed to load {}: {}", filename, e);
-                            }
-                        }
-                        break; // Move to next velocity after successful load
+                        // Just store the path, don't load yet
+                        self.sample_paths.insert((midi_pitch, sample_velocity), file_path);
+                        indexed_count += 1;
+                        break; // Move to next velocity after successful index
                     }
                 }
             }
         }
 
-        if loaded_count == 0 {
+        if indexed_count == 0 {
             return Err(format!(
                 "No piano samples found in {}. Please check sample files.",
                 samples_dir.display()
             ));
         }
 
-        println!("Loaded {} piano samples", loaded_count);
+        println!("Indexed {} piano samples (lazy loading enabled)", indexed_count);
         Ok(())
     }
 
@@ -138,8 +137,20 @@ impl SamplePlayer {
         Ok(dev_path.unwrap_or(prod_path))
     }
 
-    /// Load a single sample file
-    fn load_sample_file(&mut self, path: &PathBuf, midi_pitch: u8, sample_velocity: u8) -> Result<(), String> {
+    /// Load a single sample file on-demand and cache it
+    fn load_sample_on_demand(&self, key: (u8, u8)) -> Result<Vec<f32>, String> {
+        // Check if already in cache
+        {
+            let mut cache = self.sample_cache.lock().unwrap();
+            if let Some(samples) = cache.get(&key) {
+                return Ok(samples.clone());
+            }
+        }
+
+        // Not in cache, load from disk
+        let path = self.sample_paths.get(&key)
+            .ok_or_else(|| format!("Sample not found for pitch {} velocity {}", key.0, key.1))?;
+
         let file = File::open(path)
             .map_err(|e| format!("Failed to open file: {}", e))?;
 
@@ -147,16 +158,18 @@ impl SamplePlayer {
         let source = Decoder::new(reader)
             .map_err(|e| format!("Failed to decode audio file: {}", e))?;
 
-        // Store the sample rate
-        self.sample_rate = source.sample_rate();
-
         // Convert to mono and collect samples
         let samples: Vec<f32> = source
             .convert_samples()
             .collect();
 
-        self.samples.insert((midi_pitch, sample_velocity), samples);
-        Ok(())
+        // Cache the loaded sample
+        {
+            let mut cache = self.sample_cache.lock().unwrap();
+            cache.put(key, samples.clone());
+        }
+
+        Ok(samples)
     }
 
     /// Play a note using samples with pitch shifting
@@ -164,8 +177,11 @@ impl SamplePlayer {
         // Map MIDI velocity to sample velocity layer
         let target_velocity = Self::velocity_to_sample_layer(velocity);
 
-        // Find the closest sample (pitch and velocity)
-        let ((closest_pitch, closest_velocity), sample_data) = self.find_closest_sample(pitch, target_velocity)?;
+        // Find the closest sample key (pitch and velocity)
+        let (closest_pitch, closest_velocity) = self.find_closest_sample_key(pitch, target_velocity)?;
+
+        // Load the sample on-demand (with caching)
+        let sample_data = self.load_sample_on_demand((closest_pitch, closest_velocity))?;
 
         // Calculate pitch shift ratio (minimize shifting by using exact notes when possible)
         let semitone_diff = pitch as f32 - closest_pitch as f32;
@@ -204,22 +220,22 @@ impl SamplePlayer {
         Ok(())
     }
 
-    /// Find the closest loaded sample to the requested pitch and velocity
-    fn find_closest_sample(&self, pitch: u8, velocity: u8) -> Result<((u8, u8), &Vec<f32>), String> {
-        if self.samples.is_empty() {
-            return Err("No samples loaded".to_string());
+    /// Find the closest indexed sample to the requested pitch and velocity
+    fn find_closest_sample_key(&self, pitch: u8, velocity: u8) -> Result<(u8, u8), String> {
+        if self.sample_paths.is_empty() {
+            return Err("No samples indexed".to_string());
         }
 
         // First, check if we have the exact pitch and velocity
-        if let Some(sample_data) = self.samples.get(&(pitch, velocity)) {
-            return Ok(((pitch, velocity), sample_data));
+        if self.sample_paths.contains_key(&(pitch, velocity)) {
+            return Ok((pitch, velocity));
         }
 
         // If not exact match, find the closest pitch and velocity combination
-        let mut best_key = *self.samples.keys().next().unwrap();
+        let mut best_key = *self.sample_paths.keys().next().unwrap();
         let mut min_distance = i16::MAX;
 
-        for &(sample_pitch, sample_velocity) in self.samples.keys() {
+        for &(sample_pitch, sample_velocity) in self.sample_paths.keys() {
             // Prioritize pitch accuracy (semitones are more important than velocity)
             let pitch_distance = (pitch as i16 - sample_pitch as i16).abs();
             let velocity_distance = (velocity as i16 - sample_velocity as i16).abs();
@@ -233,10 +249,7 @@ impl SamplePlayer {
             }
         }
 
-        let sample_data = self.samples.get(&best_key)
-            .ok_or("Sample not found")?;
-
-        Ok((best_key, sample_data))
+        Ok(best_key)
     }
 
     /// Set master volume
@@ -245,13 +258,18 @@ impl SamplePlayer {
         Ok(())
     }
 
-    /// Check if samples are loaded
+    /// Check if samples are indexed
     pub fn has_samples(&self) -> bool {
-        !self.samples.is_empty()
+        !self.sample_paths.is_empty()
     }
 
-    /// Get the number of loaded samples
+    /// Get the number of indexed samples
     pub fn sample_count(&self) -> usize {
-        self.samples.len()
+        self.sample_paths.len()
+    }
+
+    /// Get the number of cached samples
+    pub fn cached_count(&self) -> usize {
+        self.sample_cache.lock().unwrap().len()
     }
 }
