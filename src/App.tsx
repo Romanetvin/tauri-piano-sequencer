@@ -13,7 +13,7 @@ import { Toaster } from 'sonner';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Download, Music, FileJson, ChevronDown } from 'lucide-react';
+import { Download, Music, FileJson, ChevronDown, Upload, Sparkles, Trash2 } from 'lucide-react';
 import { useNotes } from './hooks/useNotes';
 import { usePlayback } from './hooks/usePlayback';
 import { useTracks } from './hooks/useTracks';
@@ -385,18 +385,15 @@ function App() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <button
+        <Button
           onClick={triggerFileInput}
-          className="p-2.5 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
-                     border border-gray-300 dark:border-gray-700
-                     transition-all duration-300 flex items-center gap-2"
+          variant="outline"
+          className="gap-2"
           title="Import project from JSON"
         >
-          <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-          </svg>
-          <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Import</span>
-        </button>
+          <Upload className="h-5 w-5" />
+          <span>Import</span>
+        </Button>
 
         {/* Hidden file input */}
         <input
@@ -410,39 +407,32 @@ function App() {
         <div className="h-8 w-px bg-gray-200 dark:bg-gray-800" />
 
         {/* AI Generate Button */}
-        <button
+        <Button
           onClick={() => setShowAIMelodyGenerator(true)}
-          className="p-2.5 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600
-                     border border-indigo-600 dark:border-indigo-400
-                     transition-all duration-300 flex items-center gap-2 relative group"
+          className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white relative"
           title="AI Melody Generator (Ctrl+Shift+G)"
         >
-          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-          </svg>
-          <span className="text-sm font-medium text-white">AI</span>
+          <Sparkles className="h-5 w-5" />
+          <span>AI</span>
           {configuredProviders.filter(p => p.hasApiKey).length > 0 && (
             <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center text-xs text-white font-bold">
               {configuredProviders.filter(p => p.hasApiKey).length}
             </span>
           )}
-        </button>
+        </Button>
 
         <div className="h-8 w-px bg-gray-200 dark:bg-gray-800" />
 
         {/* Reset Button */}
-        <button
+        <Button
           onClick={() => setShowResetModal(true)}
-          className="p-2.5 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-red-100 dark:hover:bg-red-900/20
-                     border border-gray-300 dark:border-gray-700 hover:border-red-300 dark:hover:border-red-700
-                     transition-all duration-300 flex items-center gap-2"
+          variant="outline"
+          className="gap-2 hover:bg-destructive/10 hover:border-destructive/50"
           title="Reset piano roll"
         >
-          <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
-          <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Reset</span>
-        </button>
+          <Trash2 className="h-5 w-5" />
+          <span>Reset</span>
+        </Button>
 
         <div className="h-8 w-px bg-gray-200 dark:bg-gray-800" />
 
