@@ -9,12 +9,16 @@ import VisualPiano from './components/VisualPiano';
 import KeyPressNotification, { KeyPress } from './components/KeyPressNotification';
 import TrackPanel from './components/TrackPanel';
 import ScaleSelector from './components/ScaleSelector';
+import AISettings from './components/AISettings';
+import AIMelodyGenerator from './components/AIMelodyGenerator';
 import { useNotes } from './hooks/useNotes';
 import { usePlayback } from './hooks/usePlayback';
 import { useTracks } from './hooks/useTracks';
-import { Note, GridSettings } from './types';
+import { useAI } from './hooks/useAI';
+import { Note, GridSettings, AIProvider, MelodyGenerationResponse, Scale } from './types';
 import { exportProject, importProject, validateProject, ExportFormat } from './utils/projectUtils';
 import { RootNote, ScaleMode, getScaleNotes } from './utils/scaleUtils';
+import { importAIMelody, quantizeToGrid } from './utils/aiMelodyUtils';
 
 function App() {
   const [gridSettings] = useState<GridSettings>({
@@ -103,6 +107,18 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedScale, setSelectedScale] = useState<{ root: RootNote; mode: ScaleMode } | null>(null);
 
+  // AI State
+  const [showAISettings, setShowAISettings] = useState(false);
+  const [showAIMelodyGenerator, setShowAIMelodyGenerator] = useState(false);
+  const {
+    configuredProviders,
+    isLoading: isAILoading,
+    generateMelody,
+    saveApiKey,
+    deleteApiKey,
+    testConnection,
+  } = useAI();
+
   // Calculate highlighted notes based on selected scale
   const highlightedNotes = useMemo(() => {
     if (!selectedScale) return new Set<number>();
@@ -144,10 +160,38 @@ function App() {
     });
   }, []);
 
+  // AI Handlers
+  const handleAIGenerate = useCallback(async (
+    prompt: string,
+    scale: Scale | undefined,
+    measures: number,
+    provider: AIProvider,
+    temperature: number
+  ): Promise<MelodyGenerationResponse> => {
+    return await generateMelody({ prompt, scale, measures, provider, temperature });
+  }, [generateMelody]);
+
+  const handleAIImport = useCallback((
+    response: MelodyGenerationResponse,
+    trackId: string,
+    overlay: boolean
+  ) => {
+    const newNotes = importAIMelody(response, trackId, overlay, notes);
+    const quantized = quantizeToGrid(newNotes, gridSettings);
+    setNotes(quantized);
+  }, [notes, gridSettings, setNotes]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in an input
-      if (e.target instanceof HTMLInputElement) return;
+      // Ignore if typing in an input or textarea
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      // AI shortcut: Cmd/Ctrl + Shift + G
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.code === 'KeyG') {
+        e.preventDefault();
+        setShowAIMelodyGenerator(true);
+        return;
+      }
 
       // Copy-paste shortcuts MUST be checked FIRST (before piano keys)
       // Use e.code for physical key position (works across all keyboard layouts)
@@ -421,6 +465,27 @@ function App() {
 
         <div className="h-8 w-px bg-gray-200 dark:bg-gray-800" />
 
+        {/* AI Generate Button */}
+        <button
+          onClick={() => setShowAIMelodyGenerator(true)}
+          className="p-2.5 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600
+                     border border-indigo-600 dark:border-indigo-400
+                     transition-all duration-300 flex items-center gap-2 relative group"
+          title="AI Melody Generator (Ctrl+Shift+G)"
+        >
+          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+          </svg>
+          <span className="text-sm font-medium text-white">AI Generate</span>
+          {configuredProviders.filter(p => p.hasApiKey).length > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center text-xs text-white font-bold">
+              {configuredProviders.filter(p => p.hasApiKey).length}
+            </span>
+          )}
+        </button>
+
+        <div className="h-8 w-px bg-gray-200 dark:bg-gray-800" />
+
         {/* Reset Button */}
         <button
           onClick={() => setShowResetModal(true)}
@@ -649,6 +714,35 @@ function App() {
 
       {/* Key Press Notifications */}
       <KeyPressNotification keyPresses={keyPresses} />
+
+      {/* AI Settings Modal */}
+      {showAISettings && (
+        <AISettings
+          providers={configuredProviders}
+          onSaveApiKey={saveApiKey}
+          onDeleteApiKey={deleteApiKey}
+          onTestConnection={testConnection}
+          onClose={() => setShowAISettings(false)}
+          isLoading={isAILoading}
+        />
+      )}
+
+      {/* AI Melody Generator Modal */}
+      {showAIMelodyGenerator && (
+        <AIMelodyGenerator
+          providers={configuredProviders}
+          selectedScale={selectedScale}
+          selectedTrackId={selectedTrackId}
+          onGenerate={handleAIGenerate}
+          onImport={handleAIImport}
+          onOpenSettings={() => {
+            setShowAIMelodyGenerator(false);
+            setShowAISettings(true);
+          }}
+          onClose={() => setShowAIMelodyGenerator(false)}
+          isLoading={isAILoading}
+        />
+      )}
     </div>
   );
 }

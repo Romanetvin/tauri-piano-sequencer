@@ -52,3 +52,36 @@ export interface Scale {
   root: string;            // Root note (C, C#, D, etc.)
   mode: 'major' | 'minor'; // Scale mode (major/minor)
 }
+
+// ============================================================================
+// AI Melody Generation Types
+// ============================================================================
+
+export type AIProvider = 'openai' | 'gemini' | 'anthropic' | 'cohere';
+
+export interface AIProviderConfig {
+  name: AIProvider;
+  displayName: string;
+  hasApiKey: boolean;
+}
+
+export interface MelodyGenerationRequest {
+  prompt: string;
+  scale?: Scale;
+  measures?: number;
+  provider: AIProvider;
+  temperature?: number;
+}
+
+export interface GenerationMetadata {
+  provider: AIProvider;
+  timestamp: string;
+  model_name: string;
+  temperature: number;
+  scale?: Scale;
+}
+
+export interface MelodyGenerationResponse {
+  notes: Note[];
+  metadata: GenerationMetadata;
+}
