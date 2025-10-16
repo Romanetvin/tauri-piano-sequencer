@@ -1,14 +1,42 @@
 use crate::ai_models::{AIProvider, GenerationMetadata, MelodyRequest, MelodyResponse, Note};
-use crate::ai_prompts::{build_system_prompt, build_user_prompt, extract_json};
+use crate::ai_prompts::{build_system_prompt, build_user_prompt, build_retry_prompt, extract_json};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 
 #[async_trait]
 pub trait AIClient: Send + Sync {
     async fn generate_melody(&self, request: &MelodyRequest, api_key: &str) -> Result<MelodyResponse>;
+
+    /// Generate melody with retry logic and comprehensive validation
+    async fn generate_melody_with_retry(&self, request: &MelodyRequest, api_key: &str) -> Result<MelodyResponse> {
+        // First attempt
+        let response = self.generate_melody(request, api_key).await?;
+
+        // Comprehensive validation
+        match response.validate_comprehensive(request.measures, request.scale.as_ref()) {
+            Ok(_) => return Ok(response),
+            Err(validation_error) => {
+                // Log the validation error and retry once
+                eprintln!("⚠ First generation attempt failed validation: {}", validation_error);
+                eprintln!("→ Retrying with adjusted prompt...");
+
+                // Create a retry request with adjusted prompt
+                let retry_response = self.generate_melody_retry(request, api_key, &validation_error).await?;
+
+                // Validate retry response
+                retry_response.validate_comprehensive(request.measures, request.scale.as_ref())
+                    .map_err(|e| anyhow::anyhow!("Retry also failed validation: {}", e))?;
+
+                Ok(retry_response)
+            }
+        }
+    }
+
+    /// Generate melody for retry attempt with error feedback
+    async fn generate_melody_retry(&self, request: &MelodyRequest, api_key: &str, error: &str) -> Result<MelodyResponse>;
 }
 
 // ============================================================================
@@ -61,7 +89,18 @@ impl AIClient for OpenAIClient {
     async fn generate_melody(&self, request: &MelodyRequest, api_key: &str) -> Result<MelodyResponse> {
         let system_prompt = build_system_prompt(request);
         let user_prompt = build_user_prompt(request);
+        self.make_request(request, api_key, &system_prompt, &user_prompt).await
+    }
 
+    async fn generate_melody_retry(&self, request: &MelodyRequest, api_key: &str, error: &str) -> Result<MelodyResponse> {
+        let system_prompt = build_system_prompt(request);
+        let retry_prompt = build_retry_prompt(request, error);
+        self.make_request(request, api_key, &system_prompt, &retry_prompt).await
+    }
+}
+
+impl OpenAIClient {
+    async fn make_request(&self, request: &MelodyRequest, api_key: &str, system_prompt: &str, user_prompt: &str) -> Result<MelodyResponse> {
         let body = json!({
             "model": "gpt-4o-mini",
             "messages": [
@@ -181,7 +220,19 @@ impl AIClient for GeminiClient {
         let system_prompt = build_system_prompt(request);
         let user_prompt = build_user_prompt(request);
         let combined_prompt = format!("{}\n\n{}", system_prompt, user_prompt);
+        self.make_request(request, api_key, &combined_prompt).await
+    }
 
+    async fn generate_melody_retry(&self, request: &MelodyRequest, api_key: &str, error: &str) -> Result<MelodyResponse> {
+        let system_prompt = build_system_prompt(request);
+        let retry_prompt = build_retry_prompt(request, error);
+        let combined_prompt = format!("{}\n\n{}", system_prompt, retry_prompt);
+        self.make_request(request, api_key, &combined_prompt).await
+    }
+}
+
+impl GeminiClient {
+    async fn make_request(&self, request: &MelodyRequest, api_key: &str, combined_prompt: &str) -> Result<MelodyResponse> {
         let body = json!({
             "contents": [{
                 "parts": [{
@@ -293,7 +344,18 @@ impl AIClient for AnthropicClient {
     async fn generate_melody(&self, request: &MelodyRequest, api_key: &str) -> Result<MelodyResponse> {
         let system_prompt = build_system_prompt(request);
         let user_prompt = build_user_prompt(request);
+        self.make_request(request, api_key, &system_prompt, &user_prompt).await
+    }
 
+    async fn generate_melody_retry(&self, request: &MelodyRequest, api_key: &str, error: &str) -> Result<MelodyResponse> {
+        let system_prompt = build_system_prompt(request);
+        let retry_prompt = build_retry_prompt(request, error);
+        self.make_request(request, api_key, &system_prompt, &retry_prompt).await
+    }
+}
+
+impl AnthropicClient {
+    async fn make_request(&self, request: &MelodyRequest, api_key: &str, system_prompt: &str, user_prompt: &str) -> Result<MelodyResponse> {
         let body = json!({
             "model": "claude-3-5-haiku-20241022",
             "max_tokens": 4096,
@@ -373,6 +435,7 @@ impl AIClient for AnthropicClient {
 // ============================================================================
 
 pub struct CohereClient {
+    #[allow(dead_code)]
     client: Client,
 }
 
@@ -387,6 +450,10 @@ impl CohereClient {
 #[async_trait]
 impl AIClient for CohereClient {
     async fn generate_melody(&self, _request: &MelodyRequest, _api_key: &str) -> Result<MelodyResponse> {
+        Err(anyhow::anyhow!("Cohere client not yet implemented"))
+    }
+
+    async fn generate_melody_retry(&self, _request: &MelodyRequest, _api_key: &str, _error: &str) -> Result<MelodyResponse> {
         Err(anyhow::anyhow!("Cohere client not yet implemented"))
     }
 }

@@ -1,4 +1,74 @@
-use crate::ai_models::{MelodyRequest, Scale};
+use crate::ai_models::MelodyRequest;
+
+/// Style information extracted from user prompt
+#[derive(Debug)]
+struct PromptStyle {
+    mood: Option<&'static str>,
+    dynamics: Option<&'static str>,
+    rhythm: Option<&'static str>,
+    genre: Option<&'static str>,
+}
+
+/// Analyze the user's prompt to extract style keywords
+fn analyze_prompt_style(prompt: &str) -> PromptStyle {
+    let prompt_lower = prompt.to_lowercase();
+
+    // Mood keywords
+    let mood = if prompt_lower.contains("happy") || prompt_lower.contains("cheerful") || prompt_lower.contains("joyful") {
+        Some("uplifting and bright")
+    } else if prompt_lower.contains("sad") || prompt_lower.contains("melancholic") || prompt_lower.contains("somber") {
+        Some("melancholic and contemplative")
+    } else if prompt_lower.contains("dark") || prompt_lower.contains("mysterious") || prompt_lower.contains("ominous") {
+        Some("dark and mysterious")
+    } else if prompt_lower.contains("calm") || prompt_lower.contains("peaceful") || prompt_lower.contains("serene") {
+        Some("calm and peaceful")
+    } else if prompt_lower.contains("energetic") || prompt_lower.contains("exciting") || prompt_lower.contains("upbeat") {
+        Some("energetic and exciting")
+    } else {
+        None
+    };
+
+    // Dynamics keywords
+    let dynamics = if prompt_lower.contains("soft") || prompt_lower.contains("quiet") || prompt_lower.contains("gentle") {
+        Some("soft dynamics (velocity 40-70)")
+    } else if prompt_lower.contains("loud") || prompt_lower.contains("powerful") || prompt_lower.contains("forte") {
+        Some("loud dynamics (velocity 90-120)")
+    } else if prompt_lower.contains("dynamic") || prompt_lower.contains("expressive") {
+        Some("varied dynamics (velocity 50-110)")
+    } else {
+        None
+    };
+
+    // Rhythm keywords
+    let rhythm = if prompt_lower.contains("fast") || prompt_lower.contains("quick") || prompt_lower.contains("rapid") {
+        Some("fast-paced with shorter note durations")
+    } else if prompt_lower.contains("slow") || prompt_lower.contains("leisurely") {
+        Some("slow-paced with longer note durations")
+    } else if prompt_lower.contains("syncopated") || prompt_lower.contains("rhythmic") {
+        Some("syncopated rhythms with off-beat emphasis")
+    } else if prompt_lower.contains("flowing") || prompt_lower.contains("smooth") {
+        Some("smooth, flowing rhythms")
+    } else {
+        None
+    };
+
+    // Genre keywords
+    let genre = if prompt_lower.contains("jazz") {
+        Some("jazz (swing rhythms, chromatic passing notes)")
+    } else if prompt_lower.contains("classical") {
+        Some("classical (balanced phrases, clear melodic structure)")
+    } else if prompt_lower.contains("pop") {
+        Some("pop (catchy, repetitive patterns)")
+    } else if prompt_lower.contains("ambient") {
+        Some("ambient (sparse, atmospheric)")
+    } else if prompt_lower.contains("blues") {
+        Some("blues (use blue notes, call-and-response patterns)")
+    } else {
+        None
+    };
+
+    PromptStyle { mood, dynamics, rhythm, genre }
+}
 
 /// Build the system prompt for AI melody generation
 pub fn build_system_prompt(request: &MelodyRequest) -> String {
@@ -15,7 +85,8 @@ pub fn build_system_prompt(request: &MelodyRequest) -> String {
     if let Some(scale) = &request.scale {
         let midi_notes = scale.get_midi_notes();
         prompt.push_str(&format!(
-            "IMPORTANT: Only use notes from the {} {} scale. Allowed MIDI notes: {:?}\n\n",
+            "IMPORTANT: Only use notes from the {} {} scale. Allowed MIDI notes: {:?}\n\
+            You may use any octave of these notes, but stick to the scale notes only.\n\n",
             scale.root, scale.mode, midi_notes
         ));
     }
@@ -24,18 +95,38 @@ pub fn build_system_prompt(request: &MelodyRequest) -> String {
     let total_beats = request.measures * 4; // Assuming 4/4 time signature
     prompt.push_str(&format!(
         "Generate a melody that fits within {} measures ({} beats total in 4/4 time).\n\
-        Notes should start between beat 0 and beat {}.\n\
+        CRITICAL: All notes must start at or before beat {} and end by beat {} at the latest.\n\
+        Calculate: startTime + duration must be <= {}\n\
         Notes can have durations like 0.25 (16th note), 0.5 (8th note), 1.0 (quarter note), 2.0 (half note), etc.\n\n",
-        request.measures, total_beats, total_beats
+        request.measures, total_beats, total_beats, total_beats, total_beats
     ));
 
-    // Add style guidance based on prompt keywords
+    // Analyze prompt for style keywords and add specific guidance
+    let style = analyze_prompt_style(&request.prompt);
+    prompt.push_str("Musical guidelines:\n");
+
+    if let Some(mood) = style.mood {
+        prompt.push_str(&format!("- Mood: Create a {} melody\n", mood));
+    }
+
+    if let Some(dynamics) = style.dynamics {
+        prompt.push_str(&format!("- Dynamics: Use {}\n", dynamics));
+    } else {
+        prompt.push_str("- Dynamics: Use moderate dynamics (velocity 60-90) with some variation\n");
+    }
+
+    if let Some(rhythm) = style.rhythm {
+        prompt.push_str(&format!("- Rhythm: Use {}\n", rhythm));
+    }
+
+    if let Some(genre) = style.genre {
+        prompt.push_str(&format!("- Genre: Follow {} style conventions\n", genre));
+    }
+
     prompt.push_str(
-        "Create a musically coherent melody that:\n\
-        - Has a clear melodic contour (rise and fall)\n\
-        - Uses appropriate rhythmic variety\n\
-        - Fits the requested style and mood\n\
-        - Sounds natural and expressive\n\n"
+        "- Structure: Create a clear melodic contour with rises and falls\n\
+        - Variety: Use rhythmic variety while maintaining coherence\n\
+        - Expression: Make it sound natural and musically expressive\n\n"
     );
 
     // Add JSON format instructions
@@ -68,6 +159,19 @@ pub fn build_user_prompt(request: &MelodyRequest) -> String {
         } else {
             "Any (chromatic)".to_string()
         }
+    )
+}
+
+/// Build an adjusted prompt for retry after validation failure
+pub fn build_retry_prompt(request: &MelodyRequest, error_message: &str) -> String {
+    let base_prompt = build_user_prompt(request);
+    format!(
+        "{}\n\n\
+        IMPORTANT: The previous attempt failed validation with this error:\n\
+        \"{}\"\n\n\
+        Please carefully correct this issue and generate a valid melody that passes all constraints.",
+        base_prompt,
+        error_message
     )
 }
 

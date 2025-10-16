@@ -206,16 +206,12 @@ async fn generate_melody(
     request.validate()
         .map_err(|e| format!("Invalid request: {}", e))?;
 
-    // Create client and generate melody
+    // Create client and generate melody with retry mechanism
     let client = create_client(&ai_provider);
     let response = client
-        .generate_melody(&request, &api_key)
+        .generate_melody_with_retry(&request, &api_key)
         .await
         .map_err(|e| format!("Failed to generate melody: {}", e))?;
-
-    // Validate response
-    response.validate_notes()
-        .map_err(|e| format!("Invalid notes in response: {}", e))?;
 
     Ok(response)
 }

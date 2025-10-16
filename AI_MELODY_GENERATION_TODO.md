@@ -167,26 +167,38 @@ Add AI-powered melody generation to the piano app using pure Rust backend with m
 
 ---
 
-## Phase 3: AI Prompt Engineering
+## Phase 3: AI Prompt Engineering ✅ COMPLETED
 
-### 3.1 Design System Prompts
-- [ ] Create `src-tauri/src/ai_prompts.rs`:
-  - [ ] Base system prompt template
-  - [ ] JSON schema definition for melody output
-  - [ ] Scale-specific instructions (e.g., "Use only notes from C major scale: C, D, E, F, G, A, B")
-  - [ ] Measure/timing instructions (e.g., "Generate exactly 16 beats (4 measures in 4/4 time)")
-  - [ ] Musical style guidance based on prompt keywords
+### 3.1 Design System Prompts ✅
+- [x] Create `src-tauri/src/ai_prompts.rs`:
+  - [x] Base system prompt template
+  - [x] JSON schema definition for melody output
+  - [x] Scale-specific instructions (e.g., "Use only notes from C major scale: C, D, E, F, G, A, B")
+  - [x] Measure/timing instructions (e.g., "Generate exactly 16 beats (4 measures in 4/4 time)")
+  - [x] Musical style guidance based on prompt keywords (mood, dynamics, rhythm, genre)
+  - [x] Style analysis function that detects keywords: happy, sad, dark, calm, energetic, soft, loud, fast, slow, jazz, classical, pop, ambient, blues
 
-### 3.2 Response Parsing & Validation
-- [ ] Parse JSON response from AI models
-- [ ] Validate note structure:
-  - [ ] All pitches are 0-127
-  - [ ] All start times are >= 0
-  - [ ] All durations are > 0
-  - [ ] Notes fit within requested measures
-  - [ ] If scale specified: all notes are in scale
-- [ ] Fallback: if validation fails, retry with adjusted prompt
-- [ ] Error handling: descriptive messages for common issues
+### 3.2 Response Parsing & Validation ✅
+- [x] Parse JSON response from AI models
+- [x] Validate note structure:
+  - [x] All pitches are 0-127 (basic validation)
+  - [x] All start times are >= 0 (measure bounds validation)
+  - [x] All durations are > 0 (minimum 0.1 beats)
+  - [x] Notes fit within requested measures (`validate_measure_bounds()`)
+  - [x] If scale specified: all notes are in scale (`validate_scale_constraints()`)
+  - [x] Comprehensive validation method (`validate_comprehensive()`)
+- [x] Fallback: if validation fails, retry with adjusted prompt (`generate_melody_with_retry()`)
+- [x] Error handling: descriptive messages for common issues (specific error messages for each validation failure)
+
+**Implementation Details:**
+- `ai_prompts.rs:13-71`: `analyze_prompt_style()` - Detects mood, dynamics, rhythm, and genre keywords
+- `ai_prompts.rs:74-144`: `build_system_prompt()` - Enhanced with style-based guidance
+- `ai_prompts.rs:166-176`: `build_retry_prompt()` - Adjusted prompt for retry attempts
+- `ai_models.rs:194-243`: `validate_measure_bounds()` - Checks notes fit within measures
+- `ai_models.rs:246-274`: `validate_scale_constraints()` - Validates scale adherence
+- `ai_models.rs:277-296`: `validate_comprehensive()` - Combined validation
+- `ai_client.rs:14-39`: `generate_melody_with_retry()` - Retry logic with validation
+- All AI clients (OpenAI, Gemini, Anthropic) implement retry mechanism
 
 ---
 

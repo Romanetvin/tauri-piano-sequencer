@@ -189,6 +189,111 @@ impl MelodyResponse {
         let allowed_notes = scale.get_midi_notes();
         self.notes.iter().all(|note| allowed_notes.contains(&note.pitch))
     }
+
+    /// Validate that all notes fit within the specified number of measures
+    pub fn validate_measure_bounds(&self, measures: u32) -> Result<(), String> {
+        let max_beats = (measures * 4) as f64;
+
+        for (i, note) in self.notes.iter().enumerate() {
+            // Check if note starts within bounds
+            if note.start_time < 0.0 {
+                return Err(format!(
+                    "Note {} has negative start time: {}",
+                    i + 1,
+                    note.start_time
+                ));
+            }
+
+            if note.start_time > max_beats {
+                return Err(format!(
+                    "Note {} starts at beat {:.2}, which is beyond {} measures ({} beats)",
+                    i + 1,
+                    note.start_time,
+                    measures,
+                    max_beats
+                ));
+            }
+
+            // Check if note ends within bounds
+            let note_end = note.start_time + note.duration;
+            if note_end > max_beats {
+                return Err(format!(
+                    "Note {} (starting at beat {:.2} with duration {:.2}) ends at beat {:.2}, \
+                    which exceeds {} measures ({} beats)",
+                    i + 1,
+                    note.start_time,
+                    note.duration,
+                    note_end,
+                    measures,
+                    max_beats
+                ));
+            }
+
+            // Check for minimum duration
+            if note.duration < 0.1 {
+                return Err(format!(
+                    "Note {} has duration {:.2} which is too short (minimum 0.1 beats)",
+                    i + 1,
+                    note.duration
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate that all notes are in the specified scale
+    pub fn validate_scale_constraints(&self, scale: &Scale) -> Result<(), String> {
+        let allowed_notes = scale.get_midi_notes();
+        let mut invalid_notes = Vec::new();
+
+        for (i, note) in self.notes.iter().enumerate() {
+            if !allowed_notes.contains(&note.pitch) {
+                invalid_notes.push((i + 1, note.pitch));
+            }
+        }
+
+        if !invalid_notes.is_empty() {
+            let note_list = invalid_notes
+                .iter()
+                .map(|(idx, pitch)| format!("Note {} (MIDI {})", idx, pitch))
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            return Err(format!(
+                "The following notes are not in the {} {} scale: {}. \
+                Allowed MIDI notes: {:?}",
+                scale.root,
+                scale.mode,
+                note_list,
+                allowed_notes
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Comprehensive validation including measures and scale
+    pub fn validate_comprehensive(&self, measures: u32, scale: Option<&Scale>) -> Result<(), String> {
+        // First validate basic note structure
+        self.validate_notes()
+            .map_err(|e| format!("Note validation failed: {}", e))?;
+
+        // Validate measure bounds
+        self.validate_measure_bounds(measures)?;
+
+        // Validate scale constraints if specified
+        if let Some(scale) = scale {
+            self.validate_scale_constraints(scale)?;
+        }
+
+        // Check if we have at least one note
+        if self.notes.is_empty() {
+            return Err("No notes were generated".to_string());
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
