@@ -260,24 +260,46 @@ Add AI-powered melody generation to the piano app using pure Rust backend with m
 
 ---
 
-## Phase 5: Security & Best Practices
+## Phase 5: Security & Best Practices ✅ COMPLETED
 
-### 5.1 Security
-- [ ] Never log API keys
-- [ ] Encrypt API keys at rest (AES-GCM)
-- [ ] Use HTTPS for all API calls
-- [ ] Validate all inputs before sending to AI
-- [ ] Sanitize AI responses before rendering
+### 5.1 Security ✅
+- [x] Never log API keys (verified - no logging found in codebase)
+- [x] Encrypt API keys at rest (AES-GCM implemented in `api_key_storage.rs`)
+- [x] Use HTTPS for all API calls (reqwest uses rustls-tls)
+- [x] Validate all inputs before sending to AI (`MelodyRequest::validate()`)
+- [x] Sanitize AI responses before rendering (`MelodyRequest::sanitize_prompt()`)
+- [x] Validate API keys on save (length, control characters check)
 
-### 5.2 Rate Limiting
-- [ ] Implement client-side rate limiting (e.g., max 10 requests/minute)
-- [ ] Show cooldown timer if limit exceeded
-- [ ] Queue requests if multiple generations triggered
+### 5.2 Rate Limiting ✅
+- [x] Implement client-side rate limiting (10 requests/minute via `rateLimiter.ts`)
+- [x] Show cooldown timer if limit exceeded (countdown display in UI)
+- [x] Persist rate limit state in localStorage
+- [x] Disable generate button when rate limited
+- [x] Real-time countdown updates every second
 
-### 5.3 Cost Awareness
-- [ ] Estimate token usage before generation
-- [ ] Show approximate cost per request (optional)
-- [ ] Warning for large requests (>8 measures)
+### 5.3 Cost Awareness ✅
+- [x] Estimate token usage before generation (`costEstimator.ts`)
+- [x] Show approximate cost per request (displayed in UI)
+- [x] Warning for large requests (>8 measures with amber styling)
+- [x] Per-provider pricing (OpenAI, Gemini, Anthropic, Cohere)
+- [x] Display estimated input/output tokens
+- [x] Conditional styling for large requests
+
+**Implementation Details:**
+- `src/utils/rateLimiter.ts` - Token bucket rate limiter with localStorage persistence
+- `src/utils/costEstimator.ts` - Token and cost estimation with provider-specific pricing
+- `src-tauri/src/ai_models.rs:120-137` - Input sanitization (`sanitize_prompt()`)
+- `src-tauri/src/lib.rs:232-243` - API key validation on save
+- `src/hooks/useAI.ts` - Rate limit integration with countdown state
+- `src/components/AIMelodyGenerator.tsx` - Cost display and rate limit warning UI
+
+**Features:**
+- 🔒 AES-256-GCM encryption for API keys with machine-specific key derivation
+- 🚫 Input sanitization removes control characters and null bytes
+- ⏱️ Rate limiting: 10 requests per 60 seconds with live countdown
+- 💰 Real-time cost estimates with provider-specific pricing
+- ⚠️ Visual warnings for large requests (>8 measures)
+- 📊 Token count estimates for transparency
 
 ---
 

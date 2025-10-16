@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { AIProvider, AIProviderConfig, MelodyGenerationRequest, MelodyGenerationResponse } from '../types';
+import { getRateLimiter, RateLimitState } from '../utils/rateLimiter';
 
 interface UseAIReturn {
   // State
@@ -9,6 +10,7 @@ interface UseAIReturn {
   error: string | null;
   lastResponse: MelodyGenerationResponse | null;
   canCancel: boolean;
+  rateLimitState: RateLimitState;
 
   // Actions
   generateMelody: (request: MelodyGenerationRequest) => Promise<MelodyGenerationResponse>;
@@ -33,13 +35,40 @@ export const useAI = (): UseAIReturn => {
   const [error, setError] = useState<string | null>(null);
   const [lastResponse, setLastResponse] = useState<MelodyGenerationResponse | null>(null);
   const [canCancel, setCanCancel] = useState(false);
+  const [rateLimitState, setRateLimitState] = useState<RateLimitState>(() =>
+    getRateLimiter().getState()
+  );
 
   const cancelledRef = useRef(false);
+  const rateLimiterIntervalRef = useRef<number | null>(null);
 
   // Fetch configured providers on mount
   useEffect(() => {
     refreshProviders();
   }, []);
+
+  // Update rate limit state periodically
+  useEffect(() => {
+    const updateRateLimitState = () => {
+      const newState = getRateLimiter().getState();
+      setRateLimitState(newState);
+    };
+
+    // Update immediately
+    updateRateLimitState();
+
+    // Update every second when rate limited
+    if (rateLimitState.isLimited) {
+      rateLimiterIntervalRef.current = window.setInterval(updateRateLimitState, 1000);
+    }
+
+    return () => {
+      if (rateLimiterIntervalRef.current) {
+        clearInterval(rateLimiterIntervalRef.current);
+        rateLimiterIntervalRef.current = null;
+      }
+    };
+  }, [rateLimitState.isLimited]);
 
   const refreshProviders = useCallback(async () => {
     try {
@@ -72,12 +101,23 @@ export const useAI = (): UseAIReturn => {
   }, []);
 
   const generateMelody = useCallback(async (request: MelodyGenerationRequest): Promise<MelodyGenerationResponse> => {
+    // Check rate limit before attempting
+    const rateLimiter = getRateLimiter();
+    if (!rateLimiter.canMakeRequest()) {
+      const state = rateLimiter.getState();
+      throw new Error(`Rate limit exceeded. Please wait ${state.cooldownSeconds} seconds before trying again.`);
+    }
+
     setIsLoading(true);
     setError(null);
     setCanCancel(true);
     cancelledRef.current = false;
 
     try {
+      // Record the request
+      rateLimiter.recordRequest();
+      setRateLimitState(rateLimiter.getState());
+
       const response = await invoke<MelodyGenerationResponse>('generate_melody', {
         prompt: request.prompt,
         scale: request.scale,
@@ -104,6 +144,7 @@ export const useAI = (): UseAIReturn => {
       setIsLoading(false);
       setCanCancel(false);
       cancelledRef.current = false;
+      setRateLimitState(rateLimiter.getState());
     }
   }, []);
 
@@ -176,6 +217,7 @@ export const useAI = (): UseAIReturn => {
     error,
     lastResponse,
     canCancel,
+    rateLimitState,
     generateMelody,
     cancelGeneration,
     saveApiKey,

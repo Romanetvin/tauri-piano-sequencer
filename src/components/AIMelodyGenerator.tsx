@@ -5,6 +5,8 @@ import { RootNote, ScaleMode } from '../utils/scaleUtils';
 import { getMelodyStats } from '../utils/aiMelodyUtils';
 import { parseAIError } from '../utils/errorParser';
 import { loadAISettings, saveAISettings } from '../utils/localStorage';
+import { estimateGenerationCost, formatCost, isLargeRequest } from '../utils/costEstimator';
+import { RateLimitState } from '../utils/rateLimiter';
 
 interface AIMelodyGeneratorProps {
   providers: AIProviderConfig[];
@@ -23,6 +25,7 @@ interface AIMelodyGeneratorProps {
   isLoading: boolean;
   canCancel?: boolean;
   onCancel?: () => void;
+  rateLimitState?: RateLimitState;
 }
 
 const AIMelodyGenerator: React.FC<AIMelodyGeneratorProps> = ({
@@ -36,6 +39,7 @@ const AIMelodyGenerator: React.FC<AIMelodyGeneratorProps> = ({
   isLoading,
   canCancel = false,
   onCancel,
+  rateLimitState,
 }) => {
   const [prompt, setPrompt] = useState('');
   const [selectedProvider, setSelectedProvider] = useState<AIProvider>('openai');
@@ -377,6 +381,46 @@ const AIMelodyGenerator: React.FC<AIMelodyGeneratorProps> = ({
                 </div>
               )}
 
+              {/* Rate Limit Warning */}
+              {rateLimitState?.isLimited && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <div className="flex items-center gap-2 mb-1">
+                    <svg className="w-4 h-4 text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                    <p className="text-sm font-medium text-red-700 dark:text-red-300">
+                      Rate limit reached
+                    </p>
+                  </div>
+                  <p className="text-xs text-red-600 dark:text-red-400">
+                    Please wait {rateLimitState.cooldownSeconds} seconds before generating again.
+                  </p>
+                </div>
+              )}
+
+              {/* Cost Estimate */}
+              {prompt.trim() && !isLoading && !rateLimitState?.isLimited && (() => {
+                const estimate = estimateGenerationCost(prompt, measures, selectedProvider);
+                const isLarge = isLargeRequest(measures);
+                return (
+                  <div className={`p-3 border rounded-lg ${isLarge ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800' : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700'}`}>
+                    <div className="flex justify-between items-center">
+                      <p className={`text-xs ${isLarge ? 'text-amber-700 dark:text-amber-300' : 'text-gray-600 dark:text-gray-400'}`}>
+                        Estimated cost: {formatCost(estimate.estimatedCost)}
+                      </p>
+                      <p className={`text-xs ${isLarge ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-500'}`}>
+                        ~{estimate.estimatedOutputTokens} tokens
+                      </p>
+                    </div>
+                    {isLarge && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        ⚠️ Large request ({measures} measures)
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Generate Button */}
               <div className="flex flex-col gap-2">
                 {isLoading && (
@@ -399,7 +443,7 @@ const AIMelodyGenerator: React.FC<AIMelodyGeneratorProps> = ({
                 <div className="flex gap-2">
                   <button
                     onClick={handleGenerate}
-                    disabled={isLoading || !prompt.trim() || !selectedProviderConfig?.hasApiKey}
+                    disabled={isLoading || !prompt.trim() || !selectedProviderConfig?.hasApiKey || rateLimitState?.isLimited}
                     className="flex-1 px-4 py-3 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                   >
                     {isLoading ? (

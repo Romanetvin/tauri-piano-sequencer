@@ -116,6 +116,7 @@ function App() {
     configuredProviders,
     isLoading: isAILoading,
     canCancel,
+    rateLimitState,
     generateMelody,
     cancelGeneration,
     saveApiKey,
@@ -751,6 +752,7 @@ function App() {
           isLoading={isAILoading}
           canCancel={canCancel}
           onCancel={cancelGeneration}
+          rateLimitState={rateLimitState}
         />
       )}
 

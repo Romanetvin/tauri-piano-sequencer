@@ -194,13 +194,16 @@ async fn generate_melody(
     };
 
     // Build request
-    let request = MelodyRequest {
+    let mut request = MelodyRequest {
         prompt,
         scale,
         measures: measures.unwrap_or(4),
         model_provider: ai_provider.clone(),
         temperature,
     };
+
+    // Sanitize inputs before validation
+    request.sanitize_prompt();
 
     // Validate request
     request.validate()
@@ -226,9 +229,22 @@ fn save_ai_api_key(
     let ai_provider = AIProvider::from_str(&provider)
         .ok_or_else(|| format!("Invalid AI provider: {}", provider))?;
 
+    // Validate and sanitize API key
+    let sanitized_key = api_key.trim();
+    if sanitized_key.is_empty() {
+        return Err("API key cannot be empty".to_string());
+    }
+    if sanitized_key.len() > 500 {
+        return Err("API key too long (max 500 characters)".to_string());
+    }
+    // Check for control characters (potential injection)
+    if sanitized_key.chars().any(|c| c.is_control()) {
+        return Err("API key contains invalid characters".to_string());
+    }
+
     let api_key_manager = state.api_key_manager.lock().unwrap();
     api_key_manager
-        .save_api_key(&ai_provider, &api_key)
+        .save_api_key(&ai_provider, sanitized_key)
         .map_err(|e| format!("Failed to save API key: {}", e))?;
 
     Ok(())

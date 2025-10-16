@@ -117,6 +117,25 @@ impl Default for MelodyRequest {
     }
 }
 
+impl MelodyRequest {
+    /// Sanitize the prompt to prevent injection attacks
+    pub fn sanitize_prompt(&mut self) {
+        // Remove control characters and null bytes
+        self.prompt = self.prompt
+            .chars()
+            .filter(|c| !c.is_control() || c.is_whitespace())
+            .collect();
+
+        // Trim whitespace
+        self.prompt = self.prompt.trim().to_string();
+
+        // Truncate to max length (validation will catch this, but sanitize first)
+        if self.prompt.len() > 1000 {
+            self.prompt = self.prompt.chars().take(1000).collect();
+        }
+    }
+}
+
 /// A single musical note
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Note {
