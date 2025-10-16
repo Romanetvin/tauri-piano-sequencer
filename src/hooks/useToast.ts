@@ -1,57 +1,50 @@
-import { useState, useCallback } from 'react';
-import { ToastType } from '../components/Toast';
+import { useCallback } from 'react';
+import { toast } from 'sonner';
 
-export interface ToastMessage {
-  id: string;
-  message: string;
-  type: ToastType;
-  duration?: number;
-}
-
-let toastIdCounter = 0;
+export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
 export const useToast = () => {
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
   const showToast = useCallback((message: string, type: ToastType = 'info', duration?: number) => {
-    const id = `toast-${Date.now()}-${toastIdCounter++}`;
-    const newToast: ToastMessage = { id, message, type, duration };
+    const options = duration ? { duration } : {};
 
-    setToasts((prev) => [...prev, newToast]);
+    switch (type) {
+      case 'success':
+        toast.success(message, options);
+        break;
+      case 'error':
+        toast.error(message, options);
+        break;
+      case 'warning':
+        toast.warning(message, options);
+        break;
+      case 'info':
+      default:
+        toast.info(message, options);
+        break;
+    }
   }, []);
 
   const showSuccess = useCallback((message: string, duration?: number) => {
-    showToast(message, 'success', duration);
-  }, [showToast]);
-
-  const showError = useCallback((message: string, duration?: number) => {
-    showToast(message, 'error', duration);
-  }, [showToast]);
-
-  const showWarning = useCallback((message: string, duration?: number) => {
-    showToast(message, 'warning', duration);
-  }, [showToast]);
-
-  const showInfo = useCallback((message: string, duration?: number) => {
-    showToast(message, 'info', duration);
-  }, [showToast]);
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    toast.success(message, duration ? { duration } : {});
   }, []);
 
-  const clearAllToasts = useCallback(() => {
-    setToasts([]);
+  const showError = useCallback((message: string, duration?: number) => {
+    toast.error(message, duration ? { duration } : {});
+  }, []);
+
+  const showWarning = useCallback((message: string, duration?: number) => {
+    toast.warning(message, duration ? { duration } : {});
+  }, []);
+
+  const showInfo = useCallback((message: string, duration?: number) => {
+    toast.info(message, duration ? { duration } : {});
   }, []);
 
   return {
-    toasts,
     showToast,
     showSuccess,
     showError,
     showWarning,
     showInfo,
-    removeToast,
-    clearAllToasts,
   };
 };
