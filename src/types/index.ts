@@ -13,7 +13,7 @@ export interface Track {
   id: string;
   name: string;
   tempo: number;        // BPM (beats per minute)
-  color: string;        // Color for visual distinction
+  color: string;        // Single default color (indigo #6366f1)
   volume: number;       // 0-1
   muted: boolean;
   solo: boolean;

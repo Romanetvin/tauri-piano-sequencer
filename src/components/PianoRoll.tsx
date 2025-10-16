@@ -18,8 +18,8 @@ interface PianoRollProps {
   onNoteAdd: (pitch: number, startTime: number, duration: number, velocity: number, trackId: string) => void;
   onNoteDelete: (noteId: string) => void;
   onSeek: (beat: number) => void;
-  tracks: Track[];
-  selectedTrackId: string;
+  tracks?: Track[]; // Optional for backward compatibility
+  selectedTrackId?: string; // Optional for backward compatibility
   highlightedNotes?: Set<number>;
 }
 
@@ -35,8 +35,7 @@ const PianoRoll: React.FC<PianoRollProps> = ({
   onNoteAdd,
   onNoteDelete,
   onSeek,
-  tracks,
-  selectedTrackId,
+  selectedTrackId = 'track_default',
   highlightedNotes,
 }) => {
   const rollRef = useRef<HTMLDivElement>(null);
@@ -354,7 +353,6 @@ const PianoRoll: React.FC<PianoRollProps> = ({
               })
               .map((note) => {
                 const y = pitchToY(note.pitch, gridSettings.noteHeight, 0);
-                const track = tracks.find(t => t.id === note.trackId);
                 // Adjust x position relative to visible start
                 const adjustedNote = {
                   ...note,
@@ -377,7 +375,6 @@ const PianoRoll: React.FC<PianoRollProps> = ({
                     onResize={handleNoteResize}
                     onDelete={onNoteDelete}
                     gridSettings={gridSettings}
-                    trackColor={track?.color || '#6366f1'}
                   />
                 );
               })}

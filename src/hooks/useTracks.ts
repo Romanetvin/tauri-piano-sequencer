@@ -6,26 +6,17 @@ const generateTrackId = () => `track_${Date.now()}_${Math.random().toString(36).
 export const useTracks = () => {
   const [tracks, setTracks] = useState<Track[]>([
     {
-      id: 'track_right_hand',
-      name: 'Right Hand',
+      id: 'track_default',
+      name: 'Piano',
       tempo: 120,
-      color: '#6366f1', // indigo
-      volume: 0.8,
-      muted: false,
-      solo: false,
-    },
-    {
-      id: 'track_left_hand',
-      name: 'Left Hand',
-      tempo: 120,
-      color: '#8b5cf6', // purple
+      color: '#6366f1', // Single indigo color for all notes
       volume: 0.8,
       muted: false,
       solo: false,
     },
   ]);
 
-  const [selectedTrackId, setSelectedTrackId] = useState<string>('track_right_hand');
+  const [selectedTrackId, setSelectedTrackId] = useState<string>('track_default');
 
   const addTrack = useCallback((name?: string) => {
     const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'];

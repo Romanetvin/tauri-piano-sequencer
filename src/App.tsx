@@ -2,12 +2,10 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import PianoRoll from './components/PianoRoll';
 import TransportControls from './components/TransportControls';
-import SettingsPanel from './components/SettingsPanel';
 import ThemeToggle from './components/ThemeToggle';
 import KeyboardGuide, { keyMappings } from './components/KeyboardGuide';
 import VisualPiano from './components/VisualPiano';
 import KeyPressNotification, { KeyPress } from './components/KeyPressNotification';
-import TrackPanel from './components/TrackPanel';
 import ScaleSelector from './components/ScaleSelector';
 import AISettings from './components/AISettings';
 import AIMelodyGenerator from './components/AIMelodyGenerator';
@@ -51,10 +49,6 @@ function App() {
   const {
     tracks,
     selectedTrackId,
-    setSelectedTrackId,
-    updateTrack,
-    toggleMute,
-    toggleSolo,
     setTracks,
   } = useTracks();
 
@@ -70,20 +64,13 @@ function App() {
     }
   }, []);
 
-  const { playbackState, play, pause, stop, seek, setVolume } =
+  const { playbackState, play, pause, stop, seek } =
     usePlayback(notes, { onNotePlay: handleNotePlay, tracks });
 
-  const handleVolumeChange = useCallback(
-    async (volume: number) => {
-      setVolume(volume);
-    },
-    [setVolume]
-  );
 
   const [activeKeys, setActiveKeys] = useState<Set<string>>(new Set());
   const [activePianoNotes, setActivePianoNotes] = useState<Set<number>>(new Set());
   const [showKeyboardGuide, setShowKeyboardGuide] = useState(false);
-  const [showTrackPanel, setShowTrackPanel] = useState(false);
   const [showPianoVisual, setShowPianoVisual] = useState(true);
   const [keyPresses, setKeyPresses] = useState<KeyPress[]>([]);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -374,11 +361,6 @@ function App() {
           onStop={stop}
         />
         <div className="h-8 w-px bg-gray-200 dark:bg-gray-800" />
-        <SettingsPanel
-          volume={playbackState.volume}
-          onVolumeChange={handleVolumeChange}
-        />
-        <div className="h-8 w-px bg-gray-200 dark:bg-gray-800" />
 
         {/* Export/Import Buttons */}
         <div className="relative">
@@ -491,40 +473,14 @@ function App() {
 
         <div className="h-8 w-px bg-gray-200 dark:bg-gray-800" />
 
-        <button
-          onClick={() => setShowTrackPanel(!showTrackPanel)}
-          className="p-2.5 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
-                     border border-gray-300 dark:border-gray-700
-                     transition-all duration-300"
-          title="Toggle track panel"
-        >
-          <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
-
         <ThemeToggle />
       </div>
-
-      {/* Track Panel - Collapsible */}
-      {showTrackPanel && (
-        <TrackPanel
-          tracks={tracks}
-          selectedTrackId={selectedTrackId}
-          onSelectTrack={setSelectedTrackId}
-          onUpdateTrack={updateTrack}
-          onToggleMute={toggleMute}
-          onToggleSolo={toggleSolo}
-        />
-      )}
 
       {/* Piano Roll */}
       <div
         className="flex-1 overflow-hidden transition-all duration-300"
         style={{
-          maxHeight: showTrackPanel
-            ? (showPianoVisual ? 'calc(100vh - 400px)' : 'calc(100vh - 150px)')
-            : (showPianoVisual ? 'calc(100vh - 300px)' : 'calc(100vh - 50px)')
+          maxHeight: showPianoVisual ? 'calc(100vh - 300px)' : 'calc(100vh - 50px)'
         }}
       >
         <PianoRoll

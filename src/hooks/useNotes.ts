@@ -7,7 +7,7 @@ export const useNotes = () => {
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
   const [copiedNotes, setCopiedNotes] = useState<Note[]>([]);
 
-  const addNote = useCallback((pitch: number, startTime: number, duration: number, velocity: number = 100, trackId: string = 'track_right_hand') => {
+  const addNote = useCallback((pitch: number, startTime: number, duration: number, velocity: number = 100, trackId: string = 'track_default') => {
     const newNote: Note = {
       id: generateNoteId(),
       pitch,

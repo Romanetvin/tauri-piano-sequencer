@@ -31,7 +31,7 @@ const Note: React.FC<NoteProps> = ({
   onResize,
   onDelete,
   gridSettings,
-  trackColor = '#6366f1',
+  trackColor = '#6366f1', // Single indigo color for all notes
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
