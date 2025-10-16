@@ -176,3 +176,4 @@ The app is configured for macOS (Apple Silicon and Intel):
 - TypeScript for type safety
 - Rust dependencies: rodio 0.19, cpal 0.15, serde, chrono
 - don’t run the app yourself i already have it running myself
+- when completing a phase in a todo file, don’t create a summary file. It’s enough with your cli output

@@ -27,3 +27,6 @@ dist-ssr
 melodies/*
 
 src-tauri/samples/*.wav
+
+# AI API key storage (encrypted but still sensitive)
+src-tauri/.piano-app-data/
