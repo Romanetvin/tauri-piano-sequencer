@@ -10,6 +10,21 @@ struct PromptStyle {
 }
 
 /// Analyze the user's prompt to extract style keywords
+///
+/// This function scans the user's natural language prompt for musical style keywords
+/// and categorizes them into mood, dynamics, rhythm, and genre. These extracted
+/// styles are then used to provide specific guidance to the AI model, ensuring
+/// the generated melody matches the user's intent.
+///
+/// # Arguments
+/// * `prompt` - The user's natural language description of the desired melody
+///
+/// # Returns
+/// A `PromptStyle` struct containing detected style attributes (if any)
+///
+/// # Examples
+/// - "happy jazz melody" → mood: uplifting, genre: jazz
+/// - "soft and slow" → dynamics: soft, rhythm: slow
 fn analyze_prompt_style(prompt: &str) -> PromptStyle {
     let prompt_lower = prompt.to_lowercase();
 
@@ -71,6 +86,25 @@ fn analyze_prompt_style(prompt: &str) -> PromptStyle {
 }
 
 /// Build the system prompt for AI melody generation
+///
+/// This is the core prompt engineering function that constructs detailed instructions
+/// for the AI model. The prompt includes:
+/// 1. Role definition and output format (JSON schema)
+/// 2. Scale constraints (if user selected a scale)
+/// 3. Timing constraints (measures, beats, note boundaries)
+/// 4. Style-specific guidance (based on prompt analysis)
+/// 5. Musical best practices (structure, variety, expression)
+///
+/// The prompt is designed to balance creativity with musical validity. We use
+/// explicit constraints (like allowed MIDI notes) alongside softer guidance
+/// (like "create a clear melodic contour") to give the AI room for creativity
+/// while ensuring the output is musically coherent and valid.
+///
+/// # Arguments
+/// * `request` - The user's melody generation request with all parameters
+///
+/// # Returns
+/// A complete system prompt string to be sent to the AI provider
 pub fn build_system_prompt(request: &MelodyRequest) -> String {
     let mut prompt = String::from(
         "You are a professional melody composer. Generate musical melodies as structured JSON data.\n\n\
@@ -176,10 +210,26 @@ pub fn build_retry_prompt(request: &MelodyRequest, error_message: &str) -> Strin
 }
 
 /// Extract JSON from AI response, handling various formats
+///
+/// AI models often wrap JSON in markdown code blocks or include explanatory text.
+/// This function handles multiple common formats:
+/// 1. Markdown code blocks: ```json\n{...}\n```
+/// 2. Generic code blocks: ```\n{...}\n```
+/// 3. Text with embedded JSON: "Here's your melody: {...}"
+/// 4. Plain JSON: {...}
+///
+/// The extraction uses a fallback strategy: try each format in order of specificity,
+/// returning the first successful match.
+///
+/// # Arguments
+/// * `response` - Raw text response from the AI provider
+///
+/// # Returns
+/// `Some(String)` containing extracted JSON, or `None` if no valid JSON found
 pub fn extract_json(response: &str) -> Option<String> {
     let response = response.trim();
 
-    // Try to find JSON object in markdown code blocks
+    // Try to find JSON object in markdown code blocks (e.g., ```json\n{...}\n```)
     if let Some(start) = response.find("```json") {
         if let Some(end) = response[start..].find("```") {
             let json_start = start + 7; // Length of "```json"

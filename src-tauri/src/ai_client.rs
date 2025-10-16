@@ -11,22 +11,57 @@ pub trait AIClient: Send + Sync {
     async fn generate_melody(&self, request: &MelodyRequest, api_key: &str) -> Result<MelodyResponse>;
 
     /// Generate melody with retry logic and comprehensive validation
+    ///
+    /// This is the main entry point for melody generation. It implements a two-attempt
+    /// strategy with validation-driven retry:
+    ///
+    /// **Attempt 1**: Generate with standard prompt
+    /// - If validation passes → Return immediately (happy path)
+    /// - If validation fails → Proceed to retry
+    ///
+    /// **Attempt 2**: Generate with adjusted prompt that includes error feedback
+    /// - Build retry prompt with specific validation error message
+    /// - AI model can learn from its mistake and correct it
+    /// - If this fails → Return error to user
+    ///
+    /// **Why only 1 retry?**
+    /// - Prevents infinite loops and excessive API usage
+    /// - If AI can't generate valid output in 2 attempts, user should adjust prompt
+    /// - Balances success rate with API cost
+    ///
+    /// **Validation checks**:
+    /// - Measure bounds: All notes fit within requested time range
+    /// - Scale constraints: All notes match selected scale (if specified)
+    /// - Basic validity: Pitch 0-127, duration > 0, velocity 0-127
+    ///
+    /// # Arguments
+    /// * `request` - User's melody generation request
+    /// * `api_key` - Decrypted API key for the provider
+    ///
+    /// # Returns
+    /// A validated `MelodyResponse` that passed all checks
+    ///
+    /// # Errors
+    /// - API communication errors
+    /// - Validation failures after retry
+    /// - JSON parsing errors
     async fn generate_melody_with_retry(&self, request: &MelodyRequest, api_key: &str) -> Result<MelodyResponse> {
-        // First attempt
+        // First attempt: Use standard prompt
         let response = self.generate_melody(request, api_key).await?;
 
-        // Comprehensive validation
+        // Comprehensive validation (measure bounds + scale constraints + basic validity)
         match response.validate_comprehensive(request.measures, request.scale.as_ref()) {
-            Ok(_) => return Ok(response),
+            Ok(_) => return Ok(response), // Success! Return immediately
             Err(validation_error) => {
-                // Log the validation error and retry once
+                // First attempt failed validation - provide feedback for debugging
                 eprintln!("⚠ First generation attempt failed validation: {}", validation_error);
                 eprintln!("→ Retrying with adjusted prompt...");
 
-                // Create a retry request with adjusted prompt
+                // Second attempt: Use retry prompt with error feedback
+                // This tells the AI what went wrong so it can correct the issue
                 let retry_response = self.generate_melody_retry(request, api_key, &validation_error).await?;
 
-                // Validate retry response
+                // Validate retry response (if this fails, we give up)
                 retry_response.validate_comprehensive(request.measures, request.scale.as_ref())
                     .map_err(|e| anyhow::anyhow!("Retry also failed validation: {}", e))?;
 

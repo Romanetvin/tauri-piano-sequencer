@@ -39,6 +39,15 @@ A modern desktop piano roll application for macOS built with Tauri, React, and R
 - Delete/Backspace to remove selected notes
 - Escape to clear selection
 
+### 🤖 AI Melody Generation
+- Generate melodies using AI models (OpenAI, Gemini, Anthropic, Cohere)
+- Natural language prompts (e.g., "cheerful melody in C major")
+- Scale-aware generation with automatic validation
+- Adjustable parameters: measures, temperature, track assignment
+- Secure encrypted API key storage
+- Rate limiting and cost estimation
+- Import generated melodies directly into piano roll
+
 ### 💾 Project Management
 - Export projects as JSON files
 - Import previously saved projects
@@ -119,6 +128,64 @@ The compiled app will be available in `src-tauri/target/release/bundle/`.
 - **Export**: Click the download icon to save project as JSON
 - **Import**: Click the upload icon to load a saved project
 
+### AI Melody Generation
+Use AI to generate melodies with natural language prompts.
+
+#### Setup
+1. Click the AI button (✨) in the top toolbar or press `Cmd/Ctrl + Shift + G`
+2. Click "Settings" to configure API keys
+3. Enter API key for your preferred provider:
+   - **OpenAI**: Get from [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+   - **Google Gemini**: Get from [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
+   - **Anthropic**: Get from [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
+   - **Cohere**: Get from [dashboard.cohere.com/api-keys](https://dashboard.cohere.com/api-keys)
+4. Click "Test Connection" to verify the API key
+5. Save the API key (stored encrypted on your machine)
+
+#### Generating Melodies
+1. Open AI Generator (✨ button or `Cmd/Ctrl + Shift + G`)
+2. Select an AI provider (must have API key configured)
+3. Enter a prompt describing your desired melody:
+   - "A cheerful melody in C major"
+   - "Dark and mysterious ambient progression"
+   - "Upbeat jazz melody with syncopation"
+   - "Calm, peaceful melody for meditation"
+4. Configure generation parameters:
+   - **Scale**: Select key and mode (major, minor, etc.)
+   - **Measures**: Number of measures to generate (1-16)
+   - **Temperature**: Creativity level (0.0-2.0, default 1.0)
+   - **Track**: Which track to add notes to
+   - **Overlay**: Add to existing notes or replace them
+5. Click "Generate" and wait 5-10 seconds
+6. Review generated melody and click "Import" to add to piano roll
+
+#### Example Prompts
+- **Mood-based**: "Happy and energetic", "Sad and melancholic", "Mysterious"
+- **Genre-specific**: "Classical piano etude", "Jazz improvisation", "Pop melody"
+- **Technical**: "Ascending arpeggio in C major", "Chromatic descent with dynamics"
+- **Compound**: "Fast-paced energetic melody in E minor with staccato notes"
+
+#### Best Practices
+- **Be specific**: Include mood, tempo hints (fast/slow), and dynamics (loud/soft)
+- **Use scale constraints**: Selecting a scale ensures notes fit your composition
+- **Start small**: Generate 2-4 measures first, then expand
+- **Iterate**: Use temperature to control creativity (lower = safer, higher = experimental)
+- **Review before importing**: Check generated notes match your intent
+- **Combine with editing**: Use AI as a starting point, then refine manually
+
+#### Cost and Rate Limits
+- **Rate limit**: 10 requests per minute (client-side)
+- **Cost estimate**: Displayed before generation (typically $0.001-0.01 per request)
+- **Large requests**: Generating 8+ measures may cost more
+- **API usage**: You are charged by the AI provider based on their pricing
+
+#### Security Notes
+- API keys are encrypted using AES-256-GCM before storage
+- Keys are stored locally in app data directory (never sent to any server except the AI provider)
+- Each API key is tied to your machine's unique ID
+- Delete API keys anytime from Settings
+- Input prompts are sanitized to prevent injection attacks
+
 ## Development
 
 ### Project Structure
@@ -126,14 +193,27 @@ The compiled app will be available in `src-tauri/target/release/bundle/`.
 piano-player/
 ├── src/                        # React frontend
 │   ├── components/             # UI components
+│   │   ├── AIMelodyGenerator.tsx    # AI generation UI
+│   │   ├── AISettings.tsx           # API key management
+│   │   └── ...
 │   ├── hooks/                  # React hooks
+│   │   ├── useAI.ts                 # AI generation hooks
+│   │   └── ...
 │   ├── types/                  # TypeScript types
 │   ├── utils/                  # Helper functions
+│   │   ├── aiMelodyUtils.ts         # AI melody import logic
+│   │   ├── costEstimator.ts         # Token/cost estimation
+│   │   ├── rateLimiter.ts           # Client-side rate limiting
+│   │   └── ...
 │   └── context/                # React contexts
 ├── src-tauri/                  # Rust backend
 │   └── src/
 │       ├── lib.rs              # Tauri commands
-│       └── audio.rs            # Audio engine
+│       ├── audio.rs            # Audio engine
+│       ├── ai_models.rs        # AI data structures
+│       ├── ai_client.rs        # AI provider implementations
+│       ├── ai_prompts.rs       # System prompts & templates
+│       └── api_key_storage.rs  # Encrypted key storage
 └── package.json
 ```
 
@@ -165,6 +245,7 @@ piano-player/
 | **Spacebar** | Play/Pause |
 | **Delete/Backspace** | Remove selected notes |
 | **Escape** | Clear selection |
+| **Cmd/Ctrl + Shift + G** | Open AI Generator |
 | **QWERTY keys** | Play piano notes (see keyboard guide) |
 
 ## Configuration
@@ -202,6 +283,55 @@ Modify in `src-tauri/src/audio.rs`:
 The Vite dev server uses port 1420. If blocked:
 - Stop other instances: `lsof -ti:1420 | xargs kill -9`
 - Or change the port in `vite.config.ts` and `src-tauri/tauri.conf.json`
+
+### AI Generation Issues
+
+#### "API key not configured"
+- Open AI Settings and enter your API key for the selected provider
+- Click "Test Connection" to verify the key is valid
+- Save the key before generating
+
+#### "Rate limit exceeded"
+- **Client-side limit**: Wait for the cooldown timer (max 60 seconds)
+- **Provider rate limit**: Wait for the time specified in the error message
+- Consider using a different AI provider
+- Upgrade your API plan with the provider
+
+#### "Invalid response from AI"
+- Try regenerating with a clearer, more specific prompt
+- Reduce temperature for more predictable results
+- Try a different AI provider
+- Check if the provider's service is operational
+
+#### "Generation timeout (>30s)"
+- Check your internet connection
+- Verify the AI provider's API status
+- Try reducing the number of measures (generate fewer notes)
+- Retry with a simpler prompt
+
+#### "Notes don't fit within measures"
+- This is a validation error - the AI generated notes outside the requested time range
+- Try regenerating (the system will retry automatically once)
+- Reduce the complexity of your prompt
+- Use a different AI provider
+
+#### "Notes not in selected scale"
+- The AI generated notes outside your selected scale
+- Try regenerating with a more explicit scale instruction in the prompt
+- Example: "melody using only C, D, E, F, G, A, B notes"
+
+#### "Cost estimate seems high"
+- Large generations (8+ measures) require more tokens
+- Complex prompts increase input token count
+- Consider generating fewer measures at a time
+- OpenAI and Gemini are typically cheaper than Anthropic
+
+#### API Keys Security
+- Keys are encrypted with AES-256-GCM before storage
+- Keys are stored in: `~/Library/Application Support/com.piano-app.dev/api_keys.json` (macOS)
+- Each key is tied to your machine ID
+- To completely remove keys: Delete the file above or use "Delete" in Settings
+- Never share your API keys with others
 
 ## Recommended IDE Setup
 
