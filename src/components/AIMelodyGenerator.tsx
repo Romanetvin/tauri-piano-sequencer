@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AIProvider, AIProviderConfig, MelodyGenerationResponse, Scale } from '../types';
 import ScaleSelector from './ScaleSelector';
 import { RootNote, ScaleMode } from '../utils/scaleUtils';
 import { getMelodyStats } from '../utils/aiMelodyUtils';
+import { parseAIError } from '../utils/errorParser';
+import { loadAISettings, saveAISettings } from '../utils/localStorage';
 
 interface AIMelodyGeneratorProps {
   providers: AIProviderConfig[];
@@ -19,6 +21,8 @@ interface AIMelodyGeneratorProps {
   onOpenSettings: () => void;
   onClose: () => void;
   isLoading: boolean;
+  canCancel?: boolean;
+  onCancel?: () => void;
 }
 
 const AIMelodyGenerator: React.FC<AIMelodyGeneratorProps> = ({
@@ -30,6 +34,8 @@ const AIMelodyGenerator: React.FC<AIMelodyGeneratorProps> = ({
   onOpenSettings,
   onClose,
   isLoading,
+  canCancel = false,
+  onCancel,
 }) => {
   const [prompt, setPrompt] = useState('');
   const [selectedProvider, setSelectedProvider] = useState<AIProvider>('openai');
@@ -41,6 +47,31 @@ const AIMelodyGenerator: React.FC<AIMelodyGeneratorProps> = ({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [generatedResponse, setGeneratedResponse] = useState<MelodyGenerationResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [generationStartTime, setGenerationStartTime] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    const settings = loadAISettings();
+    setSelectedProvider(settings.lastProvider);
+    setTemperature(settings.temperature);
+    setOverlay(settings.overlay);
+    setMeasures(settings.measures);
+  }, []);
+
+  // Track elapsed time during generation
+  useEffect(() => {
+    if (!isLoading || !generationStartTime) {
+      setElapsedSeconds(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - generationStartTime) / 1000));
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [isLoading, generationStartTime]);
 
   const handleGenerate = async () => {
     if (!prompt.trim()) {
@@ -55,6 +86,15 @@ const AIMelodyGenerator: React.FC<AIMelodyGeneratorProps> = ({
     }
 
     setError(null);
+    setGenerationStartTime(Date.now());
+
+    // Save settings to localStorage
+    saveAISettings({
+      lastProvider: selectedProvider,
+      temperature,
+      overlay,
+      measures,
+    });
 
     try {
       // Determine which scale to use
@@ -74,8 +114,15 @@ const AIMelodyGenerator: React.FC<AIMelodyGeneratorProps> = ({
       );
 
       setGeneratedResponse(response);
+      setGenerationStartTime(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const errorMessage = err instanceof Error ? err.message : String(err);
+
+      // Don't show error if user cancelled
+      if (!errorMessage.includes('cancelled')) {
+        setError(errorMessage);
+      }
+      setGenerationStartTime(null);
     }
   };
 
@@ -303,31 +350,80 @@ const AIMelodyGenerator: React.FC<AIMelodyGeneratorProps> = ({
               {/* Error Display */}
               {error && (
                 <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">
-                  <p className="text-sm text-red-700 dark:text-red-300">
-                    ✗ {error}
+                  <p className="text-sm font-medium text-red-700 dark:text-red-300 mb-1">
+                    ✗ {parseAIError(error).message}
                   </p>
+                  {parseAIError(error).action && (
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      {parseAIError(error).action}
+                    </p>
+                  )}
+                  {parseAIError(error).type === 'api_key_invalid' && (
+                    <button
+                      onClick={onOpenSettings}
+                      className="mt-2 text-xs px-3 py-1 bg-red-200 dark:bg-red-800 hover:bg-red-300 dark:hover:bg-red-700 rounded transition-colors"
+                    >
+                      Configure API Key
+                    </button>
+                  )}
+                  {(parseAIError(error).type === 'network_error' || parseAIError(error).type === 'timeout') && (
+                    <button
+                      onClick={handleGenerate}
+                      className="mt-2 text-xs px-3 py-1 bg-red-200 dark:bg-red-800 hover:bg-red-300 dark:hover:bg-red-700 rounded transition-colors"
+                    >
+                      Retry
+                    </button>
+                  )}
                 </div>
               )}
 
               {/* Generate Button */}
-              <div className="flex gap-2">
-                <button
-                  onClick={handleGenerate}
-                  disabled={isLoading || !prompt.trim() || !selectedProviderConfig?.hasApiKey}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-                >
-                  {isLoading ? (
-                    <>
-                      <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      Generating...
-                    </>
-                  ) : (
-                    <>✨ Generate Melody</>
+              <div className="flex flex-col gap-2">
+                {isLoading && (
+                  <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm text-indigo-700 dark:text-indigo-300">
+                        Generating melody...
+                      </p>
+                      <p className="text-xs text-indigo-600 dark:text-indigo-400">
+                        {elapsedSeconds}s
+                      </p>
+                    </div>
+                    <p className="text-xs text-indigo-600 dark:text-indigo-400">
+                      {elapsedSeconds < 5 ? 'This may take 5-15 seconds...' :
+                       elapsedSeconds < 15 ? 'Please wait...' :
+                       'Almost there...'}
+                    </p>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleGenerate}
+                    disabled={isLoading || !prompt.trim() || !selectedProviderConfig?.hasApiKey}
+                    className="flex-1 px-4 py-3 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                  >
+                    {isLoading ? (
+                      <>
+                        <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Generating...
+                      </>
+                    ) : (
+                      <>✨ Generate Melody</>
+                    )}
+                  </button>
+                  {isLoading && canCancel && onCancel && (
+                    <button
+                      onClick={onCancel}
+                      className="px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors"
+                      title="Cancel generation"
+                    >
+                      Cancel
+                    </button>
                   )}
-                </button>
+                </div>
               </div>
             </>
           ) : (

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { AIProvider, AIProviderConfig, MelodyGenerationRequest, MelodyGenerationResponse } from '../types';
 
@@ -8,9 +8,11 @@ interface UseAIReturn {
   isLoading: boolean;
   error: string | null;
   lastResponse: MelodyGenerationResponse | null;
+  canCancel: boolean;
 
   // Actions
   generateMelody: (request: MelodyGenerationRequest) => Promise<MelodyGenerationResponse>;
+  cancelGeneration: () => void;
   saveApiKey: (provider: AIProvider, apiKey: string) => Promise<void>;
   deleteApiKey: (provider: AIProvider) => Promise<void>;
   testConnection: (provider: AIProvider) => Promise<boolean>;
@@ -30,6 +32,9 @@ export const useAI = (): UseAIReturn => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastResponse, setLastResponse] = useState<MelodyGenerationResponse | null>(null);
+  const [canCancel, setCanCancel] = useState(false);
+
+  const cancelledRef = useRef(false);
 
   // Fetch configured providers on mount
   useEffect(() => {
@@ -61,9 +66,16 @@ export const useAI = (): UseAIReturn => {
     }
   }, []);
 
+  const cancelGeneration = useCallback(() => {
+    cancelledRef.current = true;
+    setCanCancel(false);
+  }, []);
+
   const generateMelody = useCallback(async (request: MelodyGenerationRequest): Promise<MelodyGenerationResponse> => {
     setIsLoading(true);
     setError(null);
+    setCanCancel(true);
+    cancelledRef.current = false;
 
     try {
       const response = await invoke<MelodyGenerationResponse>('generate_melody', {
@@ -74,14 +86,24 @@ export const useAI = (): UseAIReturn => {
         temperature: request.temperature || 1.0,
       });
 
+      // Check if cancelled after invoke completes
+      if (cancelledRef.current) {
+        throw new Error('Generation cancelled by user');
+      }
+
       setLastResponse(response);
       return response;
     } catch (err) {
+      if (cancelledRef.current) {
+        throw new Error('Generation cancelled by user');
+      }
       const errorMessage = err instanceof Error ? err.message : String(err);
       setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
       setIsLoading(false);
+      setCanCancel(false);
+      cancelledRef.current = false;
     }
   }, []);
 
@@ -153,7 +175,9 @@ export const useAI = (): UseAIReturn => {
     isLoading,
     error,
     lastResponse,
+    canCancel,
     generateMelody,
+    cancelGeneration,
     saveApiKey,
     deleteApiKey,
     testConnection,

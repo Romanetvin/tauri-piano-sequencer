@@ -11,10 +11,12 @@ import TrackPanel from './components/TrackPanel';
 import ScaleSelector from './components/ScaleSelector';
 import AISettings from './components/AISettings';
 import AIMelodyGenerator from './components/AIMelodyGenerator';
+import Toast from './components/Toast';
 import { useNotes } from './hooks/useNotes';
 import { usePlayback } from './hooks/usePlayback';
 import { useTracks } from './hooks/useTracks';
 import { useAI } from './hooks/useAI';
+import { useToast } from './hooks/useToast';
 import { Note, GridSettings, AIProvider, MelodyGenerationResponse, Scale } from './types';
 import { exportProject, importProject, validateProject, ExportFormat } from './utils/projectUtils';
 import { RootNote, ScaleMode, getScaleNotes } from './utils/scaleUtils';
@@ -113,11 +115,16 @@ function App() {
   const {
     configuredProviders,
     isLoading: isAILoading,
+    canCancel,
     generateMelody,
+    cancelGeneration,
     saveApiKey,
     deleteApiKey,
     testConnection,
   } = useAI();
+
+  // Toast notifications
+  const { toasts, showSuccess, removeToast } = useToast();
 
   // Calculate highlighted notes based on selected scale
   const highlightedNotes = useMemo(() => {
@@ -179,7 +186,8 @@ function App() {
     const newNotes = importAIMelody(response, trackId, overlay, notes);
     const quantized = quantizeToGrid(newNotes, gridSettings);
     setNotes(quantized);
-  }, [notes, gridSettings, setNotes]);
+    showSuccess(`Melody imported! Added ${response.notes.length} notes to piano roll 🎵`);
+  }, [notes, gridSettings, setNotes, showSuccess]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -741,8 +749,24 @@ function App() {
           }}
           onClose={() => setShowAIMelodyGenerator(false)}
           isLoading={isAILoading}
+          canCancel={canCancel}
+          onCancel={cancelGeneration}
         />
       )}
+
+      {/* Toast Notifications */}
+      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-md">
+        {toasts.map((toast) => (
+          <Toast
+            key={toast.id}
+            id={toast.id}
+            message={toast.message}
+            type={toast.type}
+            duration={toast.duration}
+            onClose={removeToast}
+          />
+        ))}
+      </div>
     </div>
   );
 }
