@@ -76,25 +76,8 @@ function App() {
   const handleVolumeChange = useCallback(
     async (volume: number) => {
       setVolume(volume);
-      try {
-        await invoke('set_volume', { volume });
-      } catch (error) {
-        console.error('Failed to set volume:', error);
-      }
     },
     [setVolume]
-  );
-
-  const handleSoundModeChange = useCallback(
-    async (mode: 'piano' | 'synthesizer') => {
-      setSoundMode(mode);
-      try {
-        await invoke('set_sound_mode', { mode });
-      } catch (error) {
-        console.error('Failed to set sound mode:', error);
-      }
-    },
-    []
   );
 
   const [activeKeys, setActiveKeys] = useState<Set<string>>(new Set());
@@ -103,7 +86,6 @@ function App() {
   const [showTrackPanel, setShowTrackPanel] = useState(false);
   const [showPianoVisual, setShowPianoVisual] = useState(true);
   const [keyPresses, setKeyPresses] = useState<KeyPress[]>([]);
-  const [soundMode, setSoundMode] = useState<'piano' | 'synthesizer'>('piano');
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -395,8 +377,6 @@ function App() {
         <SettingsPanel
           volume={playbackState.volume}
           onVolumeChange={handleVolumeChange}
-          soundMode={soundMode}
-          onSoundModeChange={handleSoundModeChange}
         />
         <div className="h-8 w-px bg-gray-200 dark:bg-gray-800" />
 
@@ -485,7 +465,7 @@ function App() {
           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
           </svg>
-          <span className="text-sm font-medium text-white">AI Generate</span>
+          <span className="text-sm font-medium text-white">AI</span>
           {configuredProviders.filter(p => p.hasApiKey).length > 0 && (
             <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center text-xs text-white font-bold">
               {configuredProviders.filter(p => p.hasApiKey).length}

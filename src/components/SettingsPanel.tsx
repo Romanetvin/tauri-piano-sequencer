@@ -3,47 +3,14 @@ import React from 'react';
 interface SettingsPanelProps {
   volume: number;
   onVolumeChange: (volume: number) => void;
-  soundMode: 'piano' | 'synthesizer';
-  onSoundModeChange: (mode: 'piano' | 'synthesizer') => void;
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
   volume,
   onVolumeChange,
-  soundMode,
-  onSoundModeChange,
 }) => {
   return (
     <div className="flex items-center gap-6">
-      {/* Sound Mode Toggle */}
-      <div className="flex items-center gap-3">
-        <label className="text-sm text-gray-600 dark:text-gray-400 font-medium whitespace-nowrap">
-          Sound
-        </label>
-        <button
-          onClick={() => onSoundModeChange(soundMode === 'piano' ? 'synthesizer' : 'piano')}
-          className="relative w-24 h-8 bg-gray-100 dark:bg-gray-800 rounded-full p-1 transition-colors duration-300"
-          title={`Current mode: ${soundMode === 'piano' ? 'Piano' : 'Synthesizer'}`}
-        >
-          <div
-            className={`absolute top-1 left-1 w-10 h-6 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full shadow-lg transition-transform duration-300 ${
-              soundMode === 'synthesizer' ? 'translate-x-12' : 'translate-x-0'
-            }`}
-          />
-          <div className="relative flex justify-between items-center h-full px-2">
-            <span className={`text-xs font-bold transition-colors ${soundMode === 'piano' ? 'text-white' : 'text-gray-500 dark:text-gray-600'}`}>
-              🎹
-            </span>
-            <span className={`text-xs font-bold transition-colors ${soundMode === 'synthesizer' ? 'text-white' : 'text-gray-500 dark:text-gray-600'}`}>
-              🎛️
-            </span>
-          </div>
-        </button>
-        <span className="text-xs text-gray-500 dark:text-gray-500 font-medium w-24">
-          {soundMode === 'piano' ? 'Piano' : 'Synthesizer'}
-        </span>
-      </div>
-
       {/* Master Volume Control */}
       <div className="flex items-center gap-3">
         <label className="text-sm text-gray-600 dark:text-gray-400 font-medium whitespace-nowrap">

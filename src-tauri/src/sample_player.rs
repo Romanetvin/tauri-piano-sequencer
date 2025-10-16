@@ -252,24 +252,8 @@ impl SamplePlayer {
         Ok(best_key)
     }
 
-    /// Set master volume
-    pub fn set_volume(&mut self, volume: f32) -> Result<(), String> {
-        self.volume = volume.max(0.0).min(1.0);
-        Ok(())
-    }
-
-    /// Check if samples are indexed
-    pub fn has_samples(&self) -> bool {
-        !self.sample_paths.is_empty()
-    }
-
     /// Get the number of indexed samples
     pub fn sample_count(&self) -> usize {
         self.sample_paths.len()
-    }
-
-    /// Get the number of cached samples
-    pub fn cached_count(&self) -> usize {
-        self.sample_cache.lock().unwrap().len()
     }
 }

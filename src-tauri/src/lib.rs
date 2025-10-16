@@ -1,11 +1,9 @@
-mod audio;
 mod sample_player;
 mod ai_models;
 mod ai_client;
 mod ai_prompts;
 mod api_key_storage;
 
-use audio::{AudioEngine, SoundMode};
 use sample_player::SamplePlayer;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -23,15 +21,9 @@ struct StreamWrapper(rodio::OutputStream);
 unsafe impl Send for StreamWrapper {}
 unsafe impl Sync for StreamWrapper {}
 
-// Audio playback mode - wrapped in Arc for shared access
-enum AudioPlayer {
-    Samples(Arc<SamplePlayer>),
-    Synthesized(Arc<Mutex<AudioEngine>>),
-}
-
 // Audio engine state
 struct AppState {
-    audio_player: AudioPlayer,
+    sample_player: Arc<SamplePlayer>,
     _stream: Arc<StreamWrapper>,
     api_key_manager: Arc<Mutex<ApiKeyManager>>,
 }
@@ -57,78 +49,8 @@ struct ProjectData {
 #[tauri::command]
 fn play_note(pitch: u8, duration: f32, velocity: u8, state: State<AppState>) -> Result<(), String> {
     // Use Arc to allow concurrent playback - no mutex needed for read-only operations
-    match &state.audio_player {
-        AudioPlayer::Samples(sample_player) => {
-            // SamplePlayer is read-only during playback, Arc allows concurrent access
-            sample_player.play_note(pitch, duration, velocity)
-        },
-        AudioPlayer::Synthesized(audio_engine) => {
-            // AudioEngine needs mutex only for reading volume/mode, not for sample generation
-            let engine = audio_engine.lock().unwrap();
-            engine.play_note(pitch, duration, velocity)
-        }
-    }
-}
-
-/// Stop all currently playing notes
-#[tauri::command]
-fn stop_all_notes(state: State<AppState>) -> Result<(), String> {
-    match &state.audio_player {
-        AudioPlayer::Samples(_) => Ok(()), // Sample player doesn't support stop yet
-        AudioPlayer::Synthesized(audio_engine) => {
-            let engine = audio_engine.lock().unwrap();
-            engine.stop_all_notes()
-        }
-    }
-}
-
-/// Set the master volume (0.0 to 1.0)
-#[tauri::command]
-fn set_volume(volume: f32, state: State<AppState>) -> Result<(), String> {
-    match &state.audio_player {
-        AudioPlayer::Samples(_) => {
-            // Sample player volume is immutable after creation
-            // Would need to redesign to support dynamic volume
-            Err("Volume control not supported for sample playback".to_string())
-        },
-        AudioPlayer::Synthesized(audio_engine) => {
-            let mut engine = audio_engine.lock().unwrap();
-            engine.set_volume(volume)
-        }
-    }
-}
-
-/// Set the sound mode (piano or synthesizer)
-#[tauri::command]
-fn set_sound_mode(mode: String, state: State<AppState>) -> Result<(), String> {
-    match &state.audio_player {
-        AudioPlayer::Samples(_) => Err("Cannot change sound mode when using samples".to_string()),
-        AudioPlayer::Synthesized(audio_engine) => {
-            let mut engine = audio_engine.lock().unwrap();
-            let sound_mode = match mode.as_str() {
-                "piano" => SoundMode::Piano,
-                "synthesizer" => SoundMode::Synthesizer,
-                _ => return Err(format!("Invalid sound mode: {}", mode)),
-            };
-            engine.set_sound_mode(sound_mode)
-        }
-    }
-}
-
-/// Get the current sound mode
-#[tauri::command]
-fn get_sound_mode(state: State<AppState>) -> Result<String, String> {
-    match &state.audio_player {
-        AudioPlayer::Samples(_) => Ok("samples".to_string()),
-        AudioPlayer::Synthesized(audio_engine) => {
-            let engine = audio_engine.lock().unwrap();
-            let mode = match engine.get_sound_mode() {
-                SoundMode::Piano => "piano",
-                SoundMode::Synthesizer => "synthesizer",
-            };
-            Ok(mode.to_string())
-        }
-    }
+    // SamplePlayer is read-only during playback, Arc allows concurrent access
+    state.sample_player.play_note(pitch, duration, velocity)
 }
 
 /// Save project to a JSON file
@@ -319,20 +241,9 @@ async fn test_ai_connection(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Try to load piano samples first, fall back to synthesized audio if unavailable
-    let (audio_player, stream) = match SamplePlayer::new() {
-        Ok((sample_player, stream)) => {
-            println!("✓ Using piano samples ({} loaded)", sample_player.sample_count());
-            (AudioPlayer::Samples(Arc::new(sample_player)), stream)
-        }
-        Err(e) => {
-            eprintln!("⚠ Failed to load piano samples: {}", e);
-            eprintln!("→ Using synthesized audio instead");
-            let (audio_engine, stream) = AudioEngine::new()
-                .expect("Failed to initialize audio engine");
-            (AudioPlayer::Synthesized(Arc::new(Mutex::new(audio_engine))), stream)
-        }
-    };
+    // Load piano samples (fail if unavailable)
+    let (sample_player, stream) = SamplePlayer::new()
+        .expect("Failed to load piano samples. Please ensure sample files are in the samples directory.");
 
     // Initialize API key manager with default app data path
     let app_data_dir = std::env::current_dir()
@@ -341,19 +252,17 @@ pub fn run() {
     let api_key_manager = ApiKeyManager::new(app_data_dir)
         .expect("Failed to initialize API key manager");
 
+    println!("✓ Using piano samples ({} loaded)", sample_player.sample_count());
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
-            audio_player,
+            sample_player: Arc::new(sample_player),
             _stream: Arc::new(StreamWrapper(stream)),
             api_key_manager: Arc::new(Mutex::new(api_key_manager)),
         })
         .invoke_handler(tauri::generate_handler![
             play_note,
-            stop_all_notes,
-            set_volume,
-            set_sound_mode,
-            get_sound_mode,
             save_project,
             load_project,
             generate_melody,
