@@ -116,7 +116,7 @@ struct AINotesResponse {
 #[serde(deny_unknown_fields)]
 struct AINote {
     pitch: u8,
-    #[serde(alias = "startTime")]
+    #[serde(rename = "startTime")]
     #[schemars(rename = "startTime")]
     start_time: f64,
     duration: f64,
@@ -147,6 +147,44 @@ fn remove_format_fields(value: &mut serde_json::Value) {
             remove_format_fields(item);
         }
     }
+}
+
+/// Generate a simplified schema for Gemini (removes $defs, $ref, additionalProperties)
+fn generate_gemini_schema() -> serde_json::Value {
+    // Manually create a simple inline schema without $ref or $defs
+    json!({
+        "type": "object",
+        "properties": {
+            "notes": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "pitch": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 127
+                        },
+                        "startTime": {
+                            "type": "number",
+                            "minimum": 0.0
+                        },
+                        "duration": {
+                            "type": "number",
+                            "minimum": 0.01
+                        },
+                        "velocity": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 127
+                        }
+                    },
+                    "required": ["pitch", "startTime", "duration", "velocity"]
+                }
+            }
+        },
+        "required": ["notes"]
+    })
 }
 
 #[async_trait]
@@ -306,7 +344,7 @@ impl AIClient for GeminiClient {
 
 impl GeminiClient {
     async fn make_request(&self, request: &MelodyRequest, api_key: &str, combined_prompt: &str) -> Result<MelodyResponse> {
-        let schema = generate_melody_schema();
+        let schema = generate_gemini_schema();
 
         let body = json!({
             "contents": [{
@@ -322,7 +360,7 @@ impl GeminiClient {
         });
 
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={}",
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={}",
             api_key
         );
 
@@ -380,7 +418,7 @@ impl GeminiClient {
             metadata: GenerationMetadata {
                 provider: AIProvider::Gemini,
                 timestamp: chrono::Utc::now().to_rfc3339(),
-                model_name: "gemini-2.0-flash-exp".to_string(),
+                model_name: "gemini-2.5-flash".to_string(),
                 temperature: request.temperature.unwrap_or(1.0),
                 scale: request.scale.clone(),
             },
