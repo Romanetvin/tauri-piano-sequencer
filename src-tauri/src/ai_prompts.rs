@@ -7,6 +7,9 @@ struct PromptStyle {
     dynamics: Option<&'static str>,
     rhythm: Option<&'static str>,
     genre: Option<&'static str>,
+    articulation: Option<&'static str>,
+    texture: Option<&'static str>,
+    direction: Option<&'static str>,
 }
 
 /// Analyze the user's prompt to extract style keywords
@@ -82,7 +85,44 @@ fn analyze_prompt_style(prompt: &str) -> PromptStyle {
         None
     };
 
-    PromptStyle { mood, dynamics, rhythm, genre }
+    // Articulation keywords
+    let articulation = if prompt_lower.contains("staccato") || prompt_lower.contains("detached") || prompt_lower.contains("short") {
+        Some("staccato articulation (short, detached notes with duration 0.25-0.5)")
+    } else if prompt_lower.contains("legato") || prompt_lower.contains("connected") || prompt_lower.contains("smooth") {
+        Some("legato articulation (smooth, connected notes with longer durations)")
+    } else if prompt_lower.contains("marcato") || prompt_lower.contains("accented") {
+        Some("marcato articulation (accented notes with higher velocity)")
+    } else {
+        None
+    };
+
+    // Texture keywords
+    let texture = if prompt_lower.contains("arpeggiated") || prompt_lower.contains("broken") {
+        Some("arpeggiated texture (spread chord notes across time)")
+    } else if prompt_lower.contains("minimalist") || prompt_lower.contains("sparse") {
+        Some("minimalist texture (fewer notes, more space between them)")
+    } else if prompt_lower.contains("dense") || prompt_lower.contains("rich") || prompt_lower.contains("layered") {
+        Some("dense texture (more simultaneous notes and activity)")
+    } else if prompt_lower.contains("lyrical") {
+        Some("lyrical texture (song-like, expressive melodic lines)")
+    } else {
+        None
+    };
+
+    // Direction keywords
+    let direction = if prompt_lower.contains("ascending") || prompt_lower.contains("rising") || prompt_lower.contains("upward") {
+        Some("ascending melodic motion (notes generally move upward)")
+    } else if prompt_lower.contains("descending") || prompt_lower.contains("falling") || prompt_lower.contains("downward") {
+        Some("descending melodic motion (notes generally move downward)")
+    } else if prompt_lower.contains("stepwise") || prompt_lower.contains("scalar") {
+        Some("stepwise motion (notes move by small intervals)")
+    } else if prompt_lower.contains("leaping") || prompt_lower.contains("angular") || prompt_lower.contains("wide intervals") {
+        Some("leaping motion (notes move by larger intervals)")
+    } else {
+        None
+    };
+
+    PromptStyle { mood, dynamics, rhythm, genre, articulation, texture, direction }
 }
 
 /// Build the system prompt for AI melody generation
@@ -108,6 +148,7 @@ fn analyze_prompt_style(prompt: &str) -> PromptStyle {
 pub fn build_system_prompt(request: &MelodyRequest) -> String {
     let mut prompt = String::from(
         "You are a professional melody composer. Generate musical melodies as structured JSON data.\n\n\
+        OUTPUT FORMAT:\n\
         Your output must be a JSON object with a 'notes' array. Each note must have:\n\
         - pitch: MIDI note number (0-127, where 60 is middle C)\n\
         - startTime: Start time in beats (floating point)\n\
@@ -144,67 +185,43 @@ pub fn build_system_prompt(request: &MelodyRequest) -> String {
             .collect();
 
         prompt.push_str(&format!(
-            "CRITICAL TASK: Generate BOTH a chord progression AND a melody line.\n\n\
-            SCALE CONSTRAINT: ALL NOTES must use only notes from the {} {} scale.\n\
-            Allowed MIDI notes: {:?}\n\n\
-            ═══════════════════════════════════════════════════════════════\n\
-            PART 1: CHORD PROGRESSION (Background Harmony)\n\
-            ═══════════════════════════════════════════════════════════════\n\
-            - OCTAVE RANGE: Octaves {} to {} (lower register)\n\
-            - MIDI EXAMPLES for chords: {:?}\n\
-            - STRUCTURE: Each measure needs 3+ notes with SAME startTime (simultaneous)\n\
-            - DURATION: Each chord should last 4.0 beats (full measure)\n\
-            - VARIETY: Use different chord types from the scale (I, ii, iii, IV, V, vi)\n\
-            - Example chord at measure 1: [MIDI {}, {}, {}] all starting at beat 0.0, duration 4.0\n\n\
-            ═══════════════════════════════════════════════════════════════\n\
-            PART 2: MELODY LINE (Lead Melody)\n\
-            ═══════════════════════════════════════════════════════════════\n\
-            - OCTAVE RANGE: Octaves {} to {} (TWO octaves above chords)\n\
-            - MIDI EXAMPLES for melody: {:?}\n\
-            - STRUCTURE: Single melodic line with varied rhythms\n\
-            - DURATION: Mix of shorter notes (0.25, 0.5, 1.0, 2.0 beats)\n\
-            - PLACEMENT: Should sit in higher register, clearly above the chords\n\
-            - Example melody notes: MIDI {} at beat 0.0 (duration 1.0), MIDI {} at beat 1.0 (duration 0.5)\n\n\
-            ═══════════════════════════════════════════════════════════════\n\
-            IMPORTANT REMINDERS:\n\
-            ═══════════════════════════════════════════════════════════════\n\
-            1. Generate notes for BOTH chords (low) and melody (high)\n\
-            2. Every single note must be from the allowed MIDI list above\n\
-            3. Chords use lower MIDI numbers ({}+), melody uses higher MIDI numbers ({}+)\n\
-            4. Each measure must have at least one 3+ note chord\n\n",
+            "SCALE REQUIREMENTS:\n\
+            - Use only notes from the {} {} scale\n\
+            - Allowed MIDI notes: {:?}\n\n\
+            REGISTER GUIDELINES:\n\
+            - Harmony (chords): Use octaves {} to {} - MIDI examples: {:?}\n\
+            - Melody (lead line): Use octaves {} to {} - MIDI examples: {:?}\n\
+            - Create contrast by placing melody in higher register (MIDI {}+) and chords in lower register (MIDI {}+)\n\n\
+            ARRANGEMENT SUGGESTIONS:\n\
+            - Build a complete musical arrangement with both harmonic foundation and melodic line\n\
+            - Chords: Consider using 3+ simultaneous notes for harmonic support\n\
+            - Chord durations can vary (1.0, 2.0, or 4.0 beats) based on desired harmonic rhythm\n\
+            - Melody: Craft an expressive single-note line that stands out above the harmony\n\
+            - For sparse or minimalist styles, chords are optional - focus on the melodic line\n\
+            - Balance: Ensure the melody is distinct and the chords provide support without overwhelming\n\n",
             scale.root, scale.mode, midi_notes,
             chord_octave_start, chord_octave_end,
             chord_example_notes,
-            chord_example_notes.get(0).unwrap_or(&60),
-            chord_example_notes.get(2).unwrap_or(&64),
-            chord_example_notes.get(4).unwrap_or(&67),
             melody_octave_start, melody_octave_end,
             melody_example_notes,
-            melody_example_notes.get(0).unwrap_or(&84),
-            melody_example_notes.get(1).unwrap_or(&86),
-            chord_root_midi,
-            melody_root_midi
+            melody_root_midi,
+            chord_root_midi
         ));
     }
 
     // Add timing constraints
     let total_beats = request.measures * 4; // Assuming 4/4 time signature
     prompt.push_str(&format!(
-        "Generate a melody that fits within {} measures ({} beats total in 4/4 time).\n\
-        CRITICAL: All notes must start at or before beat {} and end by beat {} at the latest.\n\
-        Calculate: startTime + duration must be <= {}\n\
-        Notes can have durations like 0.25 (16th note), 0.5 (8th note), 1.0 (quarter note), 2.0 (half note), etc.\n\n\
-        CHORD REQUIREMENT: Each measure must contain at least one chord with a MINIMUM of 3 notes playing simultaneously.\n\
-        This means for each measure (every 4 beats), you must have at least 3 notes with the exact same startTime.\n\
-        Chord notes should typically have a duration of 4.0 beats (one full measure).\n\
-        Example: Notes at startTime 0.0 with pitches [60, 64, 67], each with duration 4.0, form a C major chord held for one measure.\n\
-        You can have additional single notes or other chords, but each measure MUST include at least one 3+ note chord with 4.0 beat duration.\n\n",
-        request.measures, total_beats, total_beats, total_beats, total_beats
+        "TIMING CONSTRAINTS:\n\
+        - Duration: {} measures ({} beats total in 4/4 time)\n\
+        - All notes must fit within this timeframe: startTime + duration <= {}\n\
+        - Note durations: 0.25 (16th), 0.5 (8th), 1.0 (quarter), 2.0 (half), 4.0 (whole)\n\n",
+        request.measures, total_beats, total_beats
     ));
 
     // Analyze prompt for style keywords and add specific guidance
     let style = analyze_prompt_style(&request.prompt);
-    prompt.push_str("Musical guidelines:\n");
+    prompt.push_str("MUSICAL GUIDELINES:\n");
 
     if let Some(mood) = style.mood {
         prompt.push_str(&format!("- Mood: Create a {} melody\n", mood));
@@ -217,22 +234,70 @@ pub fn build_system_prompt(request: &MelodyRequest) -> String {
     }
 
     if let Some(rhythm) = style.rhythm {
-        prompt.push_str(&format!("- Rhythm: Use {}\n", rhythm));
+        prompt.push_str(&format!("- Rhythm: {}\n", rhythm));
     }
 
     if let Some(genre) = style.genre {
         prompt.push_str(&format!("- Genre: Follow {} style conventions\n", genre));
     }
 
+    if let Some(articulation) = style.articulation {
+        prompt.push_str(&format!("- Articulation: Use {}\n", articulation));
+    }
+
+    if let Some(texture) = style.texture {
+        prompt.push_str(&format!("- Texture: Create {}\n", texture));
+    }
+
+    if let Some(direction) = style.direction {
+        prompt.push_str(&format!("- Direction: Use {}\n", direction));
+    }
+
+    prompt.push_str("\n");
+
+    // Add temperature-based creativity guidance
+    if let Some(temperature) = request.temperature {
+        if temperature < 0.5 {
+            prompt.push_str(
+                "CREATIVE APPROACH:\n\
+                - Focus on conventional melodic patterns and traditional harmonic progressions\n\
+                - Use predictable phrase lengths and standard rhythmic divisions\n\
+                - Prefer stepwise motion and common chord progressions\n\
+                - Create a safe, familiar-sounding composition\n\n"
+            );
+        } else if temperature > 1.5 {
+            prompt.push_str(
+                "CREATIVE APPROACH:\n\
+                - Feel free to experiment with unexpected intervals and surprising rhythms\n\
+                - Try unconventional phrase lengths and asymmetric structures\n\
+                - Explore unusual melodic leaps and unexpected harmonic moves\n\
+                - Take creative risks to make a unique, distinctive composition\n\n"
+            );
+        } else {
+            prompt.push_str(
+                "CREATIVE APPROACH:\n\
+                - Balance familiar patterns with moments of surprise\n\
+                - Mix conventional structures with creative variations\n\
+                - Combine predictable and unexpected elements for interest\n\n"
+            );
+        }
+    }
+
+    // Add musical pattern guidance
     prompt.push_str(
-        "- Structure: Create a clear melodic contour with rises and falls\n\
-        - Variety: Use rhythmic variety while maintaining coherence\n\
-        - Expression: Make it sound natural and musically expressive\n\n"
+        "MELODIC DEVELOPMENT:\n\
+        - Create memorable themes using repetition and variation\n\
+        - Use phrase structure (typically 2-4 measure phrases that create musical sentences)\n\
+        - Build a melodic arc with a clear contour: gradual rise, climax, and resolution\n\
+        - Add rhythmic interest through varied note lengths and occasional syncopation\n\
+        - Balance stepwise motion (small intervals) with occasional leaps for drama\n\
+        - Create coherence by repeating motifs while introducing subtle variations\n\n"
     );
 
     // Add JSON format instructions
     prompt.push_str(
-        "Return ONLY a valid JSON object in this exact format (no markdown, no code blocks):\n\
+        "OUTPUT FORMAT:\n\
+        Return ONLY a valid JSON object in this exact format (no markdown, no code blocks):\n\
         {\n  \
           \"notes\": [\n    \
             {\"pitch\": 60, \"startTime\": 0.0, \"duration\": 1.0, \"velocity\": 80},\n    \
@@ -298,9 +363,9 @@ pub fn extract_json(response: &str) -> Option<String> {
 
     // Try to find JSON object in markdown code blocks (e.g., ```json\n{...}\n```)
     if let Some(start) = response.find("```json") {
-        if let Some(end) = response[start..].find("```") {
-            let json_start = start + 7; // Length of "```json"
-            let json_end = start + end;
+        let json_start = start + 7; // Length of "```json"
+        if let Some(end) = response[json_start..].find("```") {
+            let json_end = json_start + end;
             return Some(response[json_start..json_end].trim().to_string());
         }
     }
@@ -392,5 +457,49 @@ Here is the melody: {"notes": [{"pitch": 60, "startTime": 0.0, "duration": 1.0, 
         let prompt = build_system_prompt(&request);
         assert!(prompt.contains("C major"));
         assert!(prompt.contains("16 beats"));
+        assert!(prompt.contains("SCALE REQUIREMENTS"));
+        assert!(prompt.contains("MUSICAL GUIDELINES"));
+        assert!(prompt.contains("MELODIC DEVELOPMENT"));
+    }
+
+    #[test]
+    fn test_prompt_style_detection() {
+        let prompt = "Fast staccato ascending jazz melody";
+        let style = analyze_prompt_style(prompt);
+
+        assert!(style.rhythm.is_some());
+        assert!(style.articulation.is_some());
+        assert!(style.direction.is_some());
+        assert!(style.genre.is_some());
+    }
+
+    #[test]
+    fn test_temperature_guidance_low() {
+        let request = MelodyRequest {
+            prompt: "Simple melody".to_string(),
+            scale: None,
+            measures: 4,
+            model_provider: crate::ai_models::AIProvider::OpenAI,
+            temperature: Some(0.3),
+        };
+
+        let prompt = build_system_prompt(&request);
+        assert!(prompt.contains("conventional"));
+        assert!(prompt.contains("CREATIVE APPROACH"));
+    }
+
+    #[test]
+    fn test_temperature_guidance_high() {
+        let request = MelodyRequest {
+            prompt: "Experimental melody".to_string(),
+            scale: None,
+            measures: 4,
+            model_provider: crate::ai_models::AIProvider::OpenAI,
+            temperature: Some(1.8),
+        };
+
+        let prompt = build_system_prompt(&request);
+        assert!(prompt.contains("experiment"));
+        assert!(prompt.contains("creative risks"));
     }
 }
