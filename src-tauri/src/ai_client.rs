@@ -276,12 +276,12 @@ impl GeminiClient {
             }],
             "generationConfig": {
                 "temperature": request.temperature.unwrap_or(1.0),
-                "responseMimeType": "application/json"
+                "response_mime_type": "application/json"
             }
         });
 
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={}",
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={}",
             api_key
         );
 
@@ -340,7 +340,7 @@ impl GeminiClient {
             metadata: GenerationMetadata {
                 provider: AIProvider::Gemini,
                 timestamp: chrono::Utc::now().to_rfc3339(),
-                model_name: "gemini-1.5-flash".to_string(),
+                model_name: "gemini-2.0-flash-exp".to_string(),
                 temperature: request.temperature.unwrap_or(1.0),
                 scale: request.scale.clone(),
             },

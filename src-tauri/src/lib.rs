@@ -164,10 +164,14 @@ fn save_ai_api_key(
         return Err("API key contains invalid characters".to_string());
     }
 
-    let api_key_manager = state.api_key_manager.lock().unwrap();
-    api_key_manager
-        .save_api_key(&ai_provider, sanitized_key)
-        .map_err(|e| format!("Failed to save API key: {}", e))?;
+    // Lock, save, and explicitly drop the guard
+    {
+        let api_key_manager = state.api_key_manager.lock().unwrap();
+        api_key_manager
+            .save_api_key(&ai_provider, sanitized_key)
+            .map_err(|e| format!("Failed to save API key: {}", e))?;
+        // Guard is dropped here when scope ends
+    }
 
     Ok(())
 }
@@ -181,10 +185,14 @@ fn delete_ai_api_key(
     let ai_provider = AIProvider::from_str(&provider)
         .ok_or_else(|| format!("Invalid AI provider: {}", provider))?;
 
-    let api_key_manager = state.api_key_manager.lock().unwrap();
-    api_key_manager
-        .delete_api_key(&ai_provider)
-        .map_err(|e| format!("Failed to delete API key: {}", e))?;
+    // Lock, delete, and explicitly drop the guard
+    {
+        let api_key_manager = state.api_key_manager.lock().unwrap();
+        api_key_manager
+            .delete_api_key(&ai_provider)
+            .map_err(|e| format!("Failed to delete API key: {}", e))?;
+        // Guard is dropped here when scope ends
+    }
 
     Ok(())
 }

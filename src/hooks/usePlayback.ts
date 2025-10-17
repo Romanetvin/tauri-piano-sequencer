@@ -51,8 +51,14 @@ export const usePlayback = (notes: Note[], options: UsePlaybackOptions = {}) => 
   }, []);
 
   const seek = useCallback((time: number) => {
-    setPlaybackState(prev => ({ ...prev, currentTime: Math.max(0, time) }));
+    const newTime = Math.max(0, time);
+    setPlaybackState(prev => ({ ...prev, currentTime: newTime }));
     playedNotesRef.current.clear();
+    // Update all track times to the new position instead of clearing
+    trackTimesRef.current.forEach((_, trackId) => {
+      trackTimesRef.current.set(trackId, newTime);
+    });
+    lastTimeRef.current = performance.now(); // Reset timing to prevent delta time jump
   }, []);
 
   const setVolume = useCallback((volume: number) => {
@@ -63,10 +69,10 @@ export const usePlayback = (notes: Note[], options: UsePlaybackOptions = {}) => 
   useEffect(() => {
     if (!playbackState.isPlaying) return;
 
-    // Initialize track times
+    // Initialize track times from current playback position
     tracks.forEach(track => {
       if (!trackTimesRef.current.has(track.id)) {
-        trackTimesRef.current.set(track.id, 0);
+        trackTimesRef.current.set(track.id, playbackState.currentTime);
       }
     });
 

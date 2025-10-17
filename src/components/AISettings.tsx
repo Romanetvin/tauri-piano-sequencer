@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AIProvider, AIProviderConfig } from '../types';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -51,6 +52,15 @@ const AISettings: React.FC<AISettingsProps> = ({
     cohere: 'idle',
   });
 
+  const [deleteStatus, setDeleteStatus] = useState<Record<AIProvider, 'idle' | 'deleting' | 'success' | 'error'>>({
+    openai: 'idle',
+    gemini: 'idle',
+    anthropic: 'idle',
+    cohere: 'idle',
+  });
+
+  const [deleteConfirmProvider, setDeleteConfirmProvider] = useState<AIProvider | null>(null);
+
   const handleSave = async (provider: AIProvider) => {
     const apiKey = apiKeys[provider].trim();
     if (!apiKey) return;
@@ -72,15 +82,34 @@ const AISettings: React.FC<AISettingsProps> = ({
     }
   };
 
-  const handleDelete = async (provider: AIProvider) => {
-    if (!confirm(`Remove API key for ${providers.find(p => p.name === provider)?.displayName}?`)) {
-      return;
-    }
+  const handleDeleteClick = (provider: AIProvider) => {
+    setDeleteConfirmProvider(provider);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmProvider) return;
+
+    const provider = deleteConfirmProvider;
+    setDeleteConfirmProvider(null);
+
+    setDeleteStatus(prev => ({ ...prev, [provider]: 'deleting' }));
 
     try {
       await onDeleteApiKey(provider);
+      setDeleteStatus(prev => ({ ...prev, [provider]: 'success' }));
+
+      // Reset status after a brief success message
+      setTimeout(() => {
+        setDeleteStatus(prev => ({ ...prev, [provider]: 'idle' }));
+      }, 2000);
     } catch (error) {
-      alert(`Failed to delete API key: ${error}`);
+      console.error(`Failed to delete API key for ${provider}:`, error);
+      setDeleteStatus(prev => ({ ...prev, [provider]: 'error' }));
+
+      // Reset error status
+      setTimeout(() => {
+        setDeleteStatus(prev => ({ ...prev, [provider]: 'idle' }));
+      }, 3000);
     }
   };
 
@@ -144,12 +173,14 @@ const AISettings: React.FC<AISettingsProps> = ({
                        testResults[provider.name] === 'error' ? '✗ Failed' : 'Test'}
                     </Button>
                     <Button
-                      onClick={() => handleDelete(provider.name)}
-                      disabled={isLoading}
+                      onClick={() => handleDeleteClick(provider.name)}
+                      disabled={isLoading || deleteStatus[provider.name] === 'deleting'}
                       variant="destructive"
                       size="sm"
                     >
-                      Delete
+                      {deleteStatus[provider.name] === 'deleting' ? 'Deleting...' :
+                       deleteStatus[provider.name] === 'success' ? '✓ Deleted' :
+                       deleteStatus[provider.name] === 'error' ? '✗ Failed' : 'Delete'}
                     </Button>
                   </div>
                 )}
@@ -214,6 +245,26 @@ const AISettings: React.FC<AISettingsProps> = ({
           </Button>
         </div>
       </DialogContent>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteConfirmProvider !== null} onOpenChange={(open) => !open && setDeleteConfirmProvider(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete API Key</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove the API key for{' '}
+              {providers.find(p => p.name === deleteConfirmProvider)?.displayName}?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 };

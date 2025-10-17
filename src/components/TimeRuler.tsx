@@ -1,5 +1,6 @@
 import React from 'react';
-import { beatsToPixels, beatsToTimeString } from '../utils/noteUtils';
+import { beatsToPixels, beatsToTimeString, snapToGrid } from '../utils/noteUtils';
+import { GridSettings } from '../types';
 
 interface TimeRulerProps {
   totalBeats: number;
@@ -7,6 +8,7 @@ interface TimeRulerProps {
   beatsPerMeasure?: number;
   onSeek?: (beat: number) => void;
   startBeat?: number; // Starting beat offset for pagination
+  gridSettings?: GridSettings; // Optional grid settings for snap-to-grid on click
 }
 
 const TimeRuler: React.FC<TimeRulerProps> = ({
@@ -15,13 +17,20 @@ const TimeRuler: React.FC<TimeRulerProps> = ({
   beatsPerMeasure = 4,
   onSeek,
   startBeat = 0,
+  gridSettings,
 }) => {
   const rulerWidth = beatsToPixels(totalBeats, pixelsPerBeat);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const beat = (x / pixelsPerBeat);
+    let beat = (x / pixelsPerBeat);
+
+    // Snap to grid if enabled and gridSettings provided
+    if (gridSettings?.snapToGrid && gridSettings?.gridDivision) {
+      beat = snapToGrid(beat, gridSettings.gridDivision);
+    }
+
     onSeek?.(beat);
   };
 

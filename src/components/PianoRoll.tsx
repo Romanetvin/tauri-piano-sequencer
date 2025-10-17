@@ -217,6 +217,7 @@ const PianoRoll: React.FC<PianoRollProps> = ({
               pixelsPerBeat={gridSettings.pixelsPerBeat}
               startBeat={visibleStartBeat}
               onSeek={(beat) => onSeek(beat + visibleStartBeat)}
+              gridSettings={gridSettings}
             />
           </div>
           {/* Page Navigation */}
