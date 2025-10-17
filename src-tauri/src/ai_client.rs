@@ -1,10 +1,11 @@
 use crate::ai_models::{AIProvider, GenerationMetadata, MelodyRequest, MelodyResponse, Note};
-use crate::ai_prompts::{build_system_prompt, build_user_prompt, build_retry_prompt, extract_json};
+use crate::ai_prompts::{build_system_prompt, build_user_prompt, build_retry_prompt};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use schemars::{schema_for, JsonSchema};
 
 #[async_trait]
 pub trait AIClient: Send + Sync {
@@ -105,18 +106,47 @@ struct OpenAIMessage {
     content: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct AINotesResponse {
     notes: Vec<AINote>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct AINote {
     pitch: u8,
-    #[serde(alias = "startTime", alias = "start_time")]
+    #[serde(alias = "startTime")]
+    #[schemars(rename = "startTime")]
     start_time: f64,
     duration: f64,
     velocity: u8,
+}
+
+/// Generate JSON schema for structured outputs, stripping unsupported format fields
+fn generate_melody_schema() -> serde_json::Value {
+    let schema = schema_for!(AINotesResponse);
+    let mut schema_value = serde_json::to_value(schema).unwrap();
+
+    // Remove "format" fields that OpenAI doesn't support
+    remove_format_fields(&mut schema_value);
+
+    schema_value
+}
+
+/// Recursively remove "format" fields from schema (OpenAI doesn't support them)
+fn remove_format_fields(value: &mut serde_json::Value) {
+    if let Some(obj) = value.as_object_mut() {
+        obj.remove("format");
+        obj.remove("$schema");
+        for (_key, val) in obj.iter_mut() {
+            remove_format_fields(val);
+        }
+    } else if let Some(arr) = value.as_array_mut() {
+        for item in arr.iter_mut() {
+            remove_format_fields(item);
+        }
+    }
 }
 
 #[async_trait]
@@ -136,6 +166,8 @@ impl AIClient for OpenAIClient {
 
 impl OpenAIClient {
     async fn make_request(&self, request: &MelodyRequest, api_key: &str, system_prompt: &str, user_prompt: &str) -> Result<MelodyResponse> {
+        let schema = generate_melody_schema();
+
         let body = json!({
             "model": "gpt-4o-mini",
             "messages": [
@@ -149,7 +181,14 @@ impl OpenAIClient {
                 }
             ],
             "temperature": request.temperature.unwrap_or(1.0),
-            "response_format": { "type": "json_object" }
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "melody_generation",
+                    "schema": schema,
+                    "strict": true
+                }
+            }
         });
 
         let response = self
@@ -181,10 +220,9 @@ impl OpenAIClient {
             .content
             .clone();
 
-        // Extract and parse JSON
-        let json_str = extract_json(&content).ok_or_else(|| anyhow::anyhow!("No valid JSON found in response"))?;
-
-        let ai_notes: AINotesResponse = serde_json::from_str(&json_str).context("Failed to parse notes JSON")?;
+        // Parse JSON directly (structured outputs guarantee valid JSON)
+        let ai_notes: AINotesResponse = serde_json::from_str(&content)
+            .context("Failed to parse notes JSON from structured output")?;
 
         // Convert to our Note format
         let notes: Vec<Note> = ai_notes
@@ -268,6 +306,8 @@ impl AIClient for GeminiClient {
 
 impl GeminiClient {
     async fn make_request(&self, request: &MelodyRequest, api_key: &str, combined_prompt: &str) -> Result<MelodyResponse> {
+        let schema = generate_melody_schema();
+
         let body = json!({
             "contents": [{
                 "parts": [{
@@ -276,7 +316,8 @@ impl GeminiClient {
             }],
             "generationConfig": {
                 "temperature": request.temperature.unwrap_or(1.0),
-                "response_mime_type": "application/json"
+                "responseMimeType": "application/json",
+                "responseSchema": schema
             }
         });
 
@@ -316,10 +357,9 @@ impl GeminiClient {
             .text
             .clone();
 
-        // Extract and parse JSON
-        let json_str = extract_json(&content).ok_or_else(|| anyhow::anyhow!("No valid JSON found in response"))?;
-
-        let ai_notes: AINotesResponse = serde_json::from_str(&json_str).context("Failed to parse notes JSON")?;
+        // Parse JSON directly (structured outputs guarantee valid JSON)
+        let ai_notes: AINotesResponse = serde_json::from_str(&content)
+            .context("Failed to parse notes JSON from structured output")?;
 
         // Convert to our Note format
         let notes: Vec<Note> = ai_notes
@@ -370,8 +410,12 @@ struct AnthropicResponse {
 }
 
 #[derive(Debug, Deserialize)]
-struct AnthropicContent {
-    text: String,
+#[serde(tag = "type", rename_all = "snake_case")]
+enum AnthropicContent {
+    #[allow(dead_code)]
+    Text { text: String },
+    #[allow(dead_code)]
+    ToolUse { id: String, name: String, input: serde_json::Value },
 }
 
 #[async_trait]
@@ -391,6 +435,8 @@ impl AIClient for AnthropicClient {
 
 impl AnthropicClient {
     async fn make_request(&self, request: &MelodyRequest, api_key: &str, system_prompt: &str, user_prompt: &str) -> Result<MelodyResponse> {
+        let schema = generate_melody_schema();
+
         let body = json!({
             "model": "claude-3-5-haiku-20241022",
             "max_tokens": 4096,
@@ -401,7 +447,18 @@ impl AnthropicClient {
                     "content": user_prompt
                 }
             ],
-            "temperature": request.temperature.unwrap_or(1.0)
+            "temperature": request.temperature.unwrap_or(1.0),
+            "tools": [
+                {
+                    "name": "generate_melody",
+                    "description": "Generate a musical melody with specified notes",
+                    "input_schema": schema
+                }
+            ],
+            "tool_choice": {
+                "type": "tool",
+                "name": "generate_melody"
+            }
         });
 
         let response = self
@@ -426,17 +483,19 @@ impl AnthropicClient {
             .await
             .context("Failed to parse Anthropic response")?;
 
-        let content = anthropic_response
+        // Find the tool use in the response
+        let tool_use = anthropic_response
             .content
-            .first()
-            .ok_or_else(|| anyhow::anyhow!("No content in Anthropic response"))?
-            .text
-            .clone();
+            .iter()
+            .find_map(|content| match content {
+                AnthropicContent::ToolUse { input, .. } => Some(input),
+                _ => None,
+            })
+            .ok_or_else(|| anyhow::anyhow!("No tool use found in Anthropic response"))?;
 
-        // Extract and parse JSON
-        let json_str = extract_json(&content).ok_or_else(|| anyhow::anyhow!("No valid JSON found in response"))?;
-
-        let ai_notes: AINotesResponse = serde_json::from_str(&json_str).context("Failed to parse notes JSON")?;
+        // Parse JSON directly from tool input (structured outputs guarantee valid JSON)
+        let ai_notes: AINotesResponse = serde_json::from_value(tool_use.clone())
+            .context("Failed to parse notes JSON from structured output")?;
 
         // Convert to our Note format
         let notes: Vec<Note> = ai_notes

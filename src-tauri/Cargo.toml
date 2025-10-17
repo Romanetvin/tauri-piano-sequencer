@@ -37,4 +37,5 @@ rand = "0.8"
 async-trait = "0.1"
 machine-uid = "0.5"
 uuid = { version = "1.11", features = ["v4"] }
+schemars = "1.0.0-alpha.17"
 

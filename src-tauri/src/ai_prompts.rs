@@ -147,9 +147,7 @@ fn analyze_prompt_style(prompt: &str) -> PromptStyle {
 /// A complete system prompt string to be sent to the AI provider
 pub fn build_system_prompt(request: &MelodyRequest) -> String {
     let mut prompt = String::from(
-        "You are a professional melody composer. Generate musical melodies as structured JSON data.\n\n\
-        OUTPUT FORMAT:\n\
-        Your output must be a JSON object with a 'notes' array. Each note must have:\n\
+        "You are a professional melody composer. Generate musical melodies with these note properties:\n\
         - pitch: MIDI note number (0-127, where 60 is middle C)\n\
         - startTime: Start time in beats (floating point)\n\
         - duration: Note duration in beats (floating point, minimum 0.25)\n\
@@ -294,18 +292,6 @@ pub fn build_system_prompt(request: &MelodyRequest) -> String {
         - Create coherence by repeating motifs while introducing subtle variations\n\n"
     );
 
-    // Add JSON format instructions
-    prompt.push_str(
-        "OUTPUT FORMAT:\n\
-        Return ONLY a valid JSON object in this exact format (no markdown, no code blocks):\n\
-        {\n  \
-          \"notes\": [\n    \
-            {\"pitch\": 60, \"startTime\": 0.0, \"duration\": 1.0, \"velocity\": 80},\n    \
-            {\"pitch\": 62, \"startTime\": 1.0, \"duration\": 1.0, \"velocity\": 80}\n  \
-          ]\n\
-        }"
-    );
-
     prompt
 }
 
@@ -315,9 +301,7 @@ pub fn build_user_prompt(request: &MelodyRequest) -> String {
         "Create a melody based on this description: {}\n\n\
         Requirements:\n\
         - Measures: {}\n\
-        - Scale: {}\n\
-        - Style: Match the mood and character described above\n\n\
-        Generate the melody as JSON.",
+        - Scale: {}",
         request.prompt,
         request.measures,
         if let Some(scale) = &request.scale {
@@ -341,104 +325,11 @@ pub fn build_retry_prompt(request: &MelodyRequest, error_message: &str) -> Strin
     )
 }
 
-/// Extract JSON from AI response, handling various formats
-///
-/// AI models often wrap JSON in markdown code blocks or include explanatory text.
-/// This function handles multiple common formats:
-/// 1. Markdown code blocks: ```json\n{...}\n```
-/// 2. Generic code blocks: ```\n{...}\n```
-/// 3. Text with embedded JSON: "Here's your melody: {...}"
-/// 4. Plain JSON: {...}
-///
-/// The extraction uses a fallback strategy: try each format in order of specificity,
-/// returning the first successful match.
-///
-/// # Arguments
-/// * `response` - Raw text response from the AI provider
-///
-/// # Returns
-/// `Some(String)` containing extracted JSON, or `None` if no valid JSON found
-pub fn extract_json(response: &str) -> Option<String> {
-    let response = response.trim();
-
-    // Try to find JSON object in markdown code blocks (e.g., ```json\n{...}\n```)
-    if let Some(start) = response.find("```json") {
-        let json_start = start + 7; // Length of "```json"
-        if let Some(end) = response[json_start..].find("```") {
-            let json_end = json_start + end;
-            return Some(response[json_start..json_end].trim().to_string());
-        }
-    }
-
-    // Try to find JSON object in generic code blocks
-    if let Some(start) = response.find("```") {
-        if let Some(end) = response[start + 3..].find("```") {
-            let json_start = start + 3;
-            let json_end = start + 3 + end;
-            let content = response[json_start..json_end].trim();
-            // Skip the language identifier if present (e.g., "json\n{...}")
-            let content = if let Some(newline) = content.find('\n') {
-                content[newline..].trim()
-            } else {
-                content
-            };
-            return Some(content.to_string());
-        }
-    }
-
-    // Try to find JSON object directly
-    if let Some(start) = response.find('{') {
-        if let Some(end) = response.rfind('}') {
-            if end > start {
-                return Some(response[start..=end].to_string());
-            }
-        }
-    }
-
-    // Return the whole response if it looks like JSON
-    if response.starts_with('{') && response.ends_with('}') {
-        return Some(response.to_string());
-    }
-
-    None
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ai_models::Scale;
-
-    #[test]
-    fn test_extract_json_from_markdown() {
-        let response = r#"
-Here's your melody:
-
-```json
-{"notes": [{"pitch": 60, "startTime": 0.0, "duration": 1.0, "velocity": 80}]}
-```
-        "#;
-
-        let json = extract_json(response).unwrap();
-        assert!(json.contains("\"notes\""));
-    }
-
-    #[test]
-    fn test_extract_json_plain() {
-        let response = r#"{"notes": [{"pitch": 60, "startTime": 0.0, "duration": 1.0, "velocity": 80}]}"#;
-
-        let json = extract_json(response).unwrap();
-        assert!(json.contains("\"notes\""));
-    }
-
-    #[test]
-    fn test_extract_json_with_text() {
-        let response = r#"
-Here is the melody: {"notes": [{"pitch": 60, "startTime": 0.0, "duration": 1.0, "velocity": 80}]}
-        "#;
-
-        let json = extract_json(response).unwrap();
-        assert!(json.contains("\"notes\""));
-    }
 
     #[test]
     fn test_build_system_prompt_with_scale() {
