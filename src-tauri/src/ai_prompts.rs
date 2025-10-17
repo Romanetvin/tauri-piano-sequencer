@@ -1,4 +1,4 @@
-use crate::ai_models::MelodyRequest;
+use crate::ai_models::{MelodyRequest, Scale};
 
 /// Style information extracted from user prompt
 #[derive(Debug)]
@@ -117,11 +117,73 @@ pub fn build_system_prompt(request: &MelodyRequest) -> String {
 
     // Add scale constraints if specified
     if let Some(scale) = &request.scale {
+        let octave = scale.octave.unwrap_or(4);
+        let chord_octave_start = octave;
+        let chord_octave_end = octave + 1;
+        let melody_octave_start = octave + 2;
+        let melody_octave_end = octave + 3;
+
+        // Calculate MIDI note of root in each octave range
+        // MIDI formula: octave starts at (octave-1)*12, C4=60, C5=72, etc.
+        let root_offset = Scale::note_to_offset(&scale.root);
+        let chord_root_midi = ((chord_octave_start + 1) * 12 + root_offset as u8) as i32;
+        let melody_root_midi = ((melody_octave_start + 1) * 12 + root_offset as u8) as i32;
+
         let midi_notes = scale.get_midi_notes();
+
+        // Filter notes by octave range for examples
+        let chord_example_notes: Vec<u8> = midi_notes.iter()
+            .filter(|&&n| n >= chord_root_midi as u8 && n < (chord_root_midi + 24) as u8)
+            .copied()
+            .take(7)
+            .collect();
+        let melody_example_notes: Vec<u8> = midi_notes.iter()
+            .filter(|&&n| n >= melody_root_midi as u8 && n < (melody_root_midi + 24) as u8)
+            .copied()
+            .take(7)
+            .collect();
+
         prompt.push_str(&format!(
-            "IMPORTANT: Only use notes from the {} {} scale. Allowed MIDI notes: {:?}\n\
-            You may use any octave of these notes, but stick to the scale notes only.\n\n",
-            scale.root, scale.mode, midi_notes
+            "CRITICAL TASK: Generate BOTH a chord progression AND a melody line.\n\n\
+            SCALE CONSTRAINT: ALL NOTES must use only notes from the {} {} scale.\n\
+            Allowed MIDI notes: {:?}\n\n\
+            ═══════════════════════════════════════════════════════════════\n\
+            PART 1: CHORD PROGRESSION (Background Harmony)\n\
+            ═══════════════════════════════════════════════════════════════\n\
+            - OCTAVE RANGE: Octaves {} to {} (lower register)\n\
+            - MIDI EXAMPLES for chords: {:?}\n\
+            - STRUCTURE: Each measure needs 3+ notes with SAME startTime (simultaneous)\n\
+            - DURATION: Each chord should last 4.0 beats (full measure)\n\
+            - VARIETY: Use different chord types from the scale (I, ii, iii, IV, V, vi)\n\
+            - Example chord at measure 1: [MIDI {}, {}, {}] all starting at beat 0.0, duration 4.0\n\n\
+            ═══════════════════════════════════════════════════════════════\n\
+            PART 2: MELODY LINE (Lead Melody)\n\
+            ═══════════════════════════════════════════════════════════════\n\
+            - OCTAVE RANGE: Octaves {} to {} (TWO octaves above chords)\n\
+            - MIDI EXAMPLES for melody: {:?}\n\
+            - STRUCTURE: Single melodic line with varied rhythms\n\
+            - DURATION: Mix of shorter notes (0.25, 0.5, 1.0, 2.0 beats)\n\
+            - PLACEMENT: Should sit in higher register, clearly above the chords\n\
+            - Example melody notes: MIDI {} at beat 0.0 (duration 1.0), MIDI {} at beat 1.0 (duration 0.5)\n\n\
+            ═══════════════════════════════════════════════════════════════\n\
+            IMPORTANT REMINDERS:\n\
+            ═══════════════════════════════════════════════════════════════\n\
+            1. Generate notes for BOTH chords (low) and melody (high)\n\
+            2. Every single note must be from the allowed MIDI list above\n\
+            3. Chords use lower MIDI numbers ({}+), melody uses higher MIDI numbers ({}+)\n\
+            4. Each measure must have at least one 3+ note chord\n\n",
+            scale.root, scale.mode, midi_notes,
+            chord_octave_start, chord_octave_end,
+            chord_example_notes,
+            chord_example_notes.get(0).unwrap_or(&60),
+            chord_example_notes.get(2).unwrap_or(&64),
+            chord_example_notes.get(4).unwrap_or(&67),
+            melody_octave_start, melody_octave_end,
+            melody_example_notes,
+            melody_example_notes.get(0).unwrap_or(&84),
+            melody_example_notes.get(1).unwrap_or(&86),
+            chord_root_midi,
+            melody_root_midi
         ));
     }
 
@@ -131,7 +193,12 @@ pub fn build_system_prompt(request: &MelodyRequest) -> String {
         "Generate a melody that fits within {} measures ({} beats total in 4/4 time).\n\
         CRITICAL: All notes must start at or before beat {} and end by beat {} at the latest.\n\
         Calculate: startTime + duration must be <= {}\n\
-        Notes can have durations like 0.25 (16th note), 0.5 (8th note), 1.0 (quarter note), 2.0 (half note), etc.\n\n",
+        Notes can have durations like 0.25 (16th note), 0.5 (8th note), 1.0 (quarter note), 2.0 (half note), etc.\n\n\
+        CHORD REQUIREMENT: Each measure must contain at least one chord with a MINIMUM of 3 notes playing simultaneously.\n\
+        This means for each measure (every 4 beats), you must have at least 3 notes with the exact same startTime.\n\
+        Chord notes should typically have a duration of 4.0 beats (one full measure).\n\
+        Example: Notes at startTime 0.0 with pitches [60, 64, 67], each with duration 4.0, form a C major chord held for one measure.\n\
+        You can have additional single notes or other chords, but each measure MUST include at least one 3+ note chord with 4.0 beat duration.\n\n",
         request.measures, total_beats, total_beats, total_beats, total_beats
     ));
 
@@ -274,6 +341,7 @@ pub fn extract_json(response: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ai_models::Scale;
 
     #[test]
     fn test_extract_json_from_markdown() {
@@ -314,6 +382,7 @@ Here is the melody: {"notes": [{"pitch": 60, "startTime": 0.0, "duration": 1.0, 
             scale: Some(Scale {
                 root: "C".to_string(),
                 mode: "major".to_string(),
+                octave: Some(4),
             }),
             measures: 4,
             model_provider: crate::ai_models::AIProvider::OpenAI,

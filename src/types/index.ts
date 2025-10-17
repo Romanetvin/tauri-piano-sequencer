@@ -51,6 +51,7 @@ export interface ViewSettings {
 export interface Scale {
   root: string;            // Root note (C, C#, D, etc.)
   mode: 'major' | 'minor'; // Scale mode (major/minor)
+  octave?: number;         // Root octave (1-7, default: 4 for C4)
 }
 
 // ============================================================================

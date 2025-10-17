@@ -159,8 +159,22 @@ function App() {
     const newNotes = importAIMelody(response, trackId, overlay, notes);
     const quantized = quantizeToGrid(newNotes, gridSettings);
     setNotes(quantized);
-    showSuccess(`Melody imported! Added ${response.notes.length} notes to piano roll 🎵`);
-  }, [notes, gridSettings, setNotes, showSuccess]);
+
+    // Auto-select the scale if one was used during generation
+    if (response.metadata.scale) {
+      const scale = response.metadata.scale;
+      // Validate that root is a valid RootNote
+      const validRoots: readonly string[] = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+      if (validRoots.includes(scale.root)) {
+        setSelectedScale({ root: scale.root as RootNote, mode: scale.mode });
+        showSuccess(`Melody imported! Added ${response.notes.length} notes in ${scale.root} ${scale.mode} 🎵`);
+      } else {
+        showSuccess(`Melody imported! Added ${response.notes.length} notes to piano roll 🎵`);
+      }
+    } else {
+      showSuccess(`Melody imported! Added ${response.notes.length} notes to piano roll 🎵`);
+    }
+  }, [notes, gridSettings, setNotes, showSuccess, setSelectedScale]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

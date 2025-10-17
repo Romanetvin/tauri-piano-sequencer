@@ -55,6 +55,7 @@ const AIMelodyGenerator: React.FC<AIMelodyGeneratorProps> = ({
   const [temperature, setTemperature] = useState(1.0);
   const [useCustomScale, setUseCustomScale] = useState(false);
   const [customScale, setCustomScale] = useState<{ root: RootNote; mode: ScaleMode } | null>(null);
+  const [rootOctave, setRootOctave] = useState(4);
   const [overlay, setOverlay] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [generatedResponse, setGeneratedResponse] = useState<MelodyGenerationResponse | null>(null);
@@ -69,6 +70,7 @@ const AIMelodyGenerator: React.FC<AIMelodyGeneratorProps> = ({
     setTemperature(settings.temperature);
     setOverlay(settings.overlay);
     setMeasures(settings.measures);
+    setRootOctave(settings.rootOctave);
   }, []);
 
   // Track elapsed time during generation
@@ -106,15 +108,16 @@ const AIMelodyGenerator: React.FC<AIMelodyGeneratorProps> = ({
       temperature,
       overlay,
       measures,
+      rootOctave,
     });
 
     try {
       // Determine which scale to use
       let scaleToUse: Scale | undefined;
       if (useCustomScale && customScale) {
-        scaleToUse = { root: customScale.root, mode: customScale.mode };
+        scaleToUse = { root: customScale.root, mode: customScale.mode, octave: rootOctave };
       } else if (selectedScale) {
-        scaleToUse = { root: selectedScale.root, mode: selectedScale.mode };
+        scaleToUse = { root: selectedScale.root, mode: selectedScale.mode, octave: rootOctave };
       }
 
       const response = await onGenerate(
@@ -237,7 +240,7 @@ const AIMelodyGenerator: React.FC<AIMelodyGeneratorProps> = ({
               </div>
 
               {/* Basic Settings */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 {/* Measures */}
                 <div className="space-y-2">
                   <Label htmlFor="measures">Measures (4/4)</Label>
@@ -252,6 +255,32 @@ const AIMelodyGenerator: React.FC<AIMelodyGeneratorProps> = ({
                   />
                   <p className="text-xs text-muted-foreground">
                     Duration: {measures * 4} beats
+                  </p>
+                </div>
+
+                {/* Root Octave */}
+                <div className="space-y-2">
+                  <Label htmlFor="rootOctave">Root Octave</Label>
+                  <Select
+                    value={rootOctave.toString()}
+                    onValueChange={(value) => setRootOctave(parseInt(value))}
+                    disabled={isLoading}
+                  >
+                    <SelectTrigger id="rootOctave">
+                      <SelectValue placeholder="Select octave" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 (Low)</SelectItem>
+                      <SelectItem value="2">2</SelectItem>
+                      <SelectItem value="3">3</SelectItem>
+                      <SelectItem value="4">4 (Default - C4)</SelectItem>
+                      <SelectItem value="5">5</SelectItem>
+                      <SelectItem value="6">6</SelectItem>
+                      <SelectItem value="7">7 (High)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Chord octave range
                   </p>
                 </div>
 

@@ -7,6 +7,7 @@ export interface AISettings {
   temperature: number;
   overlay: boolean;
   measures: number;
+  rootOctave: number;
 }
 
 const DEFAULT_SETTINGS: AISettings = {
@@ -14,6 +15,7 @@ const DEFAULT_SETTINGS: AISettings = {
   temperature: 1.0,
   overlay: true,
   measures: 4,
+  rootOctave: 4,
 };
 
 /**
@@ -34,6 +36,7 @@ export function loadAISettings(): AISettings {
       temperature: typeof parsed.temperature === 'number' ? parsed.temperature : DEFAULT_SETTINGS.temperature,
       overlay: typeof parsed.overlay === 'boolean' ? parsed.overlay : DEFAULT_SETTINGS.overlay,
       measures: typeof parsed.measures === 'number' ? parsed.measures : DEFAULT_SETTINGS.measures,
+      rootOctave: typeof parsed.rootOctave === 'number' ? parsed.rootOctave : DEFAULT_SETTINGS.rootOctave,
     };
   } catch (error) {
     console.error('Failed to load AI settings from localStorage:', error);

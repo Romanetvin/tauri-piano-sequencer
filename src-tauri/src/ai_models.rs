@@ -39,10 +39,15 @@ pub struct Scale {
     pub root: String,
     /// Scale mode (e.g., "major", "minor")
     pub mode: String,
+    /// Root octave (1-7, default: 4 for C4)
+    pub octave: Option<u8>,
 }
 
 impl Scale {
-    /// Get MIDI note numbers for this scale across all octaves (0-127)
+    /// Get MIDI note numbers for this scale
+    /// If octave is specified, returns notes across 4 octaves (root to root+3)
+    /// This covers chords (root to root+1) and melody (root+2 to root+3)
+    /// Otherwise, returns notes across all octaves (0-127)
     pub fn get_midi_notes(&self) -> Vec<u8> {
         let root_offset = Self::note_to_offset(&self.root);
         let intervals = match self.mode.to_lowercase().as_str() {
@@ -52,11 +57,29 @@ impl Scale {
         };
 
         let mut notes = Vec::new();
-        for octave in 0..11 {
-            for &interval in &intervals {
-                let midi_note = (octave * 12) + root_offset + interval;
-                if midi_note <= 127 {
-                    notes.push(midi_note as u8);
+
+        // If octave is specified, use limited range (root octave to root octave + 3)
+        // This covers chords (octave to octave+1) and melody (octave+2 to octave+3)
+        if let Some(octave) = self.octave {
+            let start_octave = octave as i32;
+            let end_octave = start_octave + 3;
+
+            for oct in start_octave..=end_octave {
+                for &interval in &intervals {
+                    let midi_note = (oct * 12) + root_offset + interval;
+                    if midi_note >= 0 && midi_note <= 127 {
+                        notes.push(midi_note as u8);
+                    }
+                }
+            }
+        } else {
+            // No octave specified, use full range
+            for octave in 0..11 {
+                for &interval in &intervals {
+                    let midi_note = (octave * 12) + root_offset + interval;
+                    if midi_note <= 127 {
+                        notes.push(midi_note as u8);
+                    }
                 }
             }
         }
@@ -64,7 +87,7 @@ impl Scale {
     }
 
     /// Convert note name to MIDI offset (C=0, C#=1, D=2, etc.)
-    fn note_to_offset(note: &str) -> i32 {
+    pub fn note_to_offset(note: &str) -> i32 {
         match note.to_uppercase().as_str() {
             "C" => 0,
             "C#" | "DB" => 1,
@@ -324,6 +347,7 @@ mod tests {
         let c_major = Scale {
             root: "C".to_string(),
             mode: "major".to_string(),
+            octave: None,
         };
         let notes = c_major.get_midi_notes();
 
